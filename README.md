@@ -19,7 +19,9 @@ A scope-first Bug Bounty policy review assistant.
 - "Submission eligible" and "bounty eligible" are metadata fields, not permission to test.
 - The importer does not run network checks against imported assets. It only saves a local inventory.
 - HackerOne workspaces are grouped under `tools/outdata/<program-handle>/<timestamp>/`.
-- The offline scope review groups assets by type and snapshot eligibility; it does not expand wildcards or probe hosts.
+- The offline scope review groups assets by type, parses eligibility flags conservatively (unknown values require manual review), ignores duplicate records, and maps asset types to relevant high-level review categories; it does not expand wildcards or probe hosts.
+- A third-party `submission_eligible: no` flag is reported as **not submission eligible in the snapshot**, not as a verified live-policy exclusion. Only the current canonical policy can establish exclusions.
+- The report distinguishes snapshot-eligible, bounty-ineligible, non-submission-eligible, and incomplete/unknown eligibility records.
 - A high-level vulnerability-class checklist is generated for policy review and learning; it does not scan for or confirm vulnerabilities.
 - Always verify the live HackerOne policy, exact scope, exclusions, and program status independently.
 
