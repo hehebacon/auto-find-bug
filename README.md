@@ -1,6 +1,6 @@
 # Auto Find Bug
 
-A scope-first Bug Bounty policy review and passive public vulnerability-intelligence assistant.
+A scope-first Bug Bounty assistant with local static source review, single-page passive web posture checks, and public vulnerability intelligence.
 
 ## Workflow
 
