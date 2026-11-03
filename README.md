@@ -1,59 +1,37 @@
 # Auto Find Bug
 
-A scope-first Bug Bounty research assistant with an interactive terminal UI.
+A scope-first Bug Bounty policy review assistant.
 
-## Current design
+## Workflow
 
-1. Boot sequence with millisecond timestamps.
-2. Accept a public Bug Bounty program URL.
-3. Fetch the public policy page and save its source snapshot.
-4. Generate a scope-review workspace and candidate asset inventory.
-5. Require the operator to confirm each in-scope asset and program rules.
-6. Offer an interactive scope selector (arrow keys).
-7. Run only explicitly enabled, policy-compliant checks.
-8. Save logs, evidence metadata, findings and Markdown reports under `tools/outdata/`.
+1. Enter one public policy URL.
+2. Save a local policy snapshot.
+3. Extract domain-like strings as unverified candidates.
+4. Select only exact hosts manually checked against the live policy.
+5. Confirm the program rules before any request.
+6. Optionally make one HTTPS HEAD metadata request per selected host, with a one-second minimum delay and no redirect following.
+7. Save evidence metadata and a preliminary Markdown report.
 
-## Safety model
+## Safety
 
-- Scope is never inferred as permission. Extracted domains are candidates until manually confirmed against the program's current policy.
-- Excluded assets and wildcard scope are handled conservatively.
-- No exploitation, credential attacks, destructive tests, denial-of-service, data extraction, or testing of third-party accounts.
-- Automated checks are limited to passive analysis and low-impact requests to confirmed assets. Respect rate limits and program rules.
-- Scanner output is a lead, not a confirmed vulnerability or severity rating.
+- Extracted names are candidates, not authorization.
+- Exclusions, wildcard semantics, program status and policy exceptions require human review.
+- The current check is metadata-only. It does not crawl, authenticate, submit forms, or access application data.
+- Do not use this tool unless the exact target is explicitly authorized by the current program policy.
+- Metadata observations are not confirmed vulnerabilities and receive no automatic severity.
 
 ## Install
 
-Python 3.11+ recommended.
+Run: `bash run.sh`
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
-auto-find-bug
-```
+Manual setup: `python -m venv .venv`, activate it, then `pip install -e .` and run `auto-find-bug`.
 
-## Workspace
+Tests: `python -m unittest discover -s tests -v`
 
-Each program gets its own directory:
+## Output
 
-```text
-tools/outdata/<program-slug>/
-  project.md
-  policy/
-    policy-source.html
-    policy-text.md
-    scope-review.md
-    scope.json
-  reconnaissance/
-  findings/
-    findings.json
-  evidence/
-  logs/
-  reports/
-    preliminary-report.md
-    final-report.md
-```
+Each run creates a separate workspace under `tools/outdata/` with policy snapshots, candidate scope, operator-confirmed scope, evidence JSON and Markdown reports.
 
 ## Status
 
-Initial scaffold. Policy parsing and scope review are deliberately conservative; always verify scope in the live program policy before testing.
+Initial safe workflow. Scope interpretation and any security finding require human review. Run the test suite locally before use.
