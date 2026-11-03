@@ -15,7 +15,6 @@ from rich.prompt import Prompt
 from rich.table import Table
 
 from .hackerone_scope import fetch_hackerone_public_snapshot, hackerone_handle_from_url
-from .network import PrivacyConfigurationError
 from .policy import (
     fetch_policy,
     load_manual_policy_text,
@@ -49,7 +48,7 @@ def boot() -> None:
         "Loading policy review module",
         "Loading candidate scope parser",
         "Loading evidence and report modules",
-        "Enforcing safe-mode defaults",
+        "Loading standard network client",
     ]
     with Progress(
         SpinnerColumn(), TextColumn("{task.description}"), BarColumn(),
@@ -338,7 +337,7 @@ def _research_command(args: argparse.Namespace) -> int:
             path = research.export_advisories(args.output, args.format, args.limit)
             console.print(f"[green]Exported {args.limit} most recent record(s) to {path}[/green]")
         return 0
-    except (ValueError, ResearchError, PrivacyConfigurationError) as exc:
+    except (ValueError, ResearchError) as exc:
         console.print(f"[red]Research command failed:[/red] {exc}")
         return 2
     except Exception as exc:
@@ -356,7 +355,7 @@ def build_parser() -> argparse.ArgumentParser:
     research_parser = commands.add_parser("research", help="Search and organize public vulnerability advisories.")
     actions = research_parser.add_subparsers(dest="research_action", required=True)
 
-    search_parser = actions.add_parser("search", help="Search public NVD CVE records by keyword.")
+    search_parser = actions.add_parser("search", help="Search public NVD records by keyword.")
     search_parser.add_argument("keyword", help="Keyword or technology name; no target URL is accepted.")
     search_parser.add_argument("--limit", type=int, default=25, help="Maximum results (1-100).")
 
@@ -367,7 +366,7 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser.add_argument("--source", choices=("NVD", "CISA KEV"))
     list_parser.add_argument("--category", help="Filter by taxonomy category text.")
 
-    actions.add_parser("status", help="Show local database and privacy-aware connection status.")
+    actions.add_parser("status", help="Show local database and standard network status.")
 
     export_parser = actions.add_parser("export", help="Export stored records as Markdown or JSON.")
     export_parser.add_argument("--format", choices=("md", "json"), default="md")
