@@ -28,6 +28,7 @@ from .scope_review import write_scope_review
 from .scope import extract_scope_candidates, normalize_confirmed_assets
 from .workspace import create_workspace
 from . import research
+from .research import ResearchError
 
 console = Console()
 
