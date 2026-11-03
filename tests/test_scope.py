@@ -9,7 +9,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from auto_find_bug.scope import extract_scope_candidates, normalize_confirmed_assets
-from auto_find_bug.checks import _safe_target
+from auto_find_bug.checks import _safe_target, run_metadata_checks
 
 
 class ScopeTests(unittest.TestCase):
@@ -25,6 +25,10 @@ class ScopeTests(unittest.TestCase):
             normalize_confirmed_assets([" App.Example.com ", "*.example.com", "https://x.example.com/path", "api.example.org"]),
             ["app.example.com", "api.example.org"],
         )
+
+    def test_active_target_checks_are_disabled(self):
+        with self.assertRaises(RuntimeError):
+            run_metadata_checks(["example.com"])
 
     def test_target_builder_rejects_paths_and_plain_http(self):
         self.assertEqual(_safe_target("app.example.com"), "https://app.example.com/")
