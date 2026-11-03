@@ -1,4 +1,12 @@
+import sys
 import unittest
+from pathlib import Path
+
+# Support running unittest directly from a source checkout without pip install -e .
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 from auto_find_bug.scope import extract_scope_candidates, normalize_confirmed_assets
 from auto_find_bug.checks import _safe_target
