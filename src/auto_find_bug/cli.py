@@ -351,7 +351,7 @@ def _code_audit_command(args: argparse.Namespace) -> int:
         result = code_audit.analyze_source(args.path)
         output = code_audit.write_code_report(result, args.output, args.format)
         console.print(Panel(
-            f"Files scanned: {result['files_scanned']}\\nFindings: {result['finding_count']}\\nReport: {output}",
+            f"Files scanned: {result['files_scanned']}\nFindings: {result['finding_count']}\nReport: {output}",
             title="LOCAL STATIC SOURCE REVIEW",
             border_style="cyan",
         ))
@@ -369,8 +369,8 @@ def _web_audit_command(args: argparse.Namespace) -> int:
         result = web_audit.audit_public_page(args.url, authorized=args.confirm_authorized)
         output = web_audit.write_web_report(result, args.output, args.format)
         console.print(Panel(
-            f"URL: {result['url']}\\nHTTP status: {result['http_status']}\\n"
-            f"Requests sent: {result['requests_sent']}\\nFindings: {result['finding_count']}\\nReport: {output}",
+            f"URL: {result['url']}\nHTTP status: {result['http_status']}\n"
+            f"Requests sent: {result['requests_sent']}\nFindings: {result['finding_count']}\nReport: {output}",
             title="PASSIVE WEB SECURITY REVIEW",
             border_style="cyan",
         ))
