@@ -6,7 +6,7 @@ import socket
 from pathlib import Path
 from urllib.parse import urlparse
 
-import httpx
+from .network import create_http_client
 from bs4 import BeautifulSoup
 
 
@@ -35,7 +35,7 @@ def validate_program_url(value: str) -> str:
 
 def fetch_policy(url: str) -> tuple[str, str]:
     """Fetch only the supplied public policy page; redirects and linked targets are not followed."""
-    with httpx.Client(
+    with create_http_client(
         follow_redirects=False,
         timeout=15.0,
         headers={"User-Agent": USER_AGENT},
