@@ -64,5 +64,5 @@ class WorkspaceReviewTests(unittest.TestCase):
                 triage_finding(workspace, finding_id, "validated", "Reviewed", "../outside.txt")
 
 
-if __python__ == "__main__":
+if __name__ == "__main__":
     unittest.main()
