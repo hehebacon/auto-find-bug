@@ -7,7 +7,7 @@ import socket
 from datetime import datetime, timezone
 from urllib.parse import quote, urlparse
 
-import httpx
+from .network import create_http_client
 from bs4 import BeautifulSoup
 
 
@@ -75,7 +75,7 @@ def fetch_hackerone_public_snapshot(program_url: str) -> dict:
 
     _require_public_host(MIRROR_HOST)
     snapshot_url = f"https://{MIRROR_HOST}/programs/{quote(handle, safe='')}/public-scope/"
-    with httpx.Client(
+    with create_http_client(
         follow_redirects=False,
         timeout=20.0,
         headers={"User-Agent": USER_AGENT, "Accept": "text/html"},
