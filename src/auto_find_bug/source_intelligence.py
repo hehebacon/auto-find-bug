@@ -199,7 +199,14 @@ def _merge_findings(workspace: Path, incoming: list[dict[str, Any]]) -> dict[str
     statuses = [item.get("status", "potential") for item in data["findings"]]
     data["counts"] = {key: statuses.count(key) for key in ("potential", "needs_review", "validated", "false_positive")}
     data["counts"]["total"] = len(statuses)
-    data["status"] = "needs_manual_review" if data["counts"]["potential"] or data["counts"]["needs_review"] else "no_open_findings"
+    if data["counts"]["validated"]:
+        data["status"] = "validated_findings_present_manual_review"
+    elif data["counts"]["potential"] or data["counts"]["needs_review"]:
+        data["status"] = "needs_manual_review"
+    elif data["counts"]["false_positive"]:
+        data["status"] = "no_open_findings"
+    else:
+        data["status"] = "no_findings"
     data["network_activity"] = "public_advisory_api_only" if data.get("online_correlation") else "none"
     data["updated_at"] = now
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -253,6 +260,7 @@ def run_analysis(input_path: str | Path, workspace_path: str | Path | None = Non
         online_dir.mkdir(parents=True, exist_ok=True)
         (online_dir / "osv-correlation.json").write_text(json.dumps(correlation, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     findings = _merge_findings(workspace, incoming)
+    findings["network_activity"] = "public_advisory_api_only" if online else "none"
     findings["source_intelligence"] = {
         "input": str(source), "analysis": "source-intelligence/analysis.json",
         "dependency_inventory": "source-intelligence/dependency-inventory.json",
