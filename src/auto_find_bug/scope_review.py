@@ -136,7 +136,7 @@ def write_scope_review(workspace: Path, snapshot: dict) -> dict:
     policy_dir.mkdir(parents=True, exist_ok=True)
     recon_dir.mkdir(parents=True, exist_ok=True)
     (policy_dir / "scope-review.json").write_text(
-        json.dumps(review, indent=2) + "\\n", encoding="utf-8"
+        json.dumps(review, indent=2) + chr(10), encoding="utf-8"
     )
 
     lines = [
@@ -186,7 +186,7 @@ def write_scope_review(workspace: Path, snapshot: dict) -> dict:
         *[f"- {item}" for item in review["limitations"]],
         "",
     ])
-    (policy_dir / "scope-review.md").write_text("\\n".join(lines), encoding="utf-8")
+    (policy_dir / "scope-review.md").write_text(chr(10).join(lines), encoding="utf-8")
 
     checklist = [
         "# Vulnerability-class review checklist",
@@ -209,6 +209,6 @@ def write_scope_review(workspace: Path, snapshot: dict) -> dict:
         "",
     ])
     (recon_dir / "vulnerability-class-checklist.md").write_text(
-        "\\n".join(checklist), encoding="utf-8"
+        chr(10).join(checklist), encoding="utf-8"
     )
     return review
