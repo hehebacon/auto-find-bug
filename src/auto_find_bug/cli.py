@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import questionary
@@ -10,9 +10,11 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 from rich.prompt import Prompt
-from rich.table import Table
 
+from .checks import run_metadata_checks
 from .policy import fetch_policy, validate_program_url
+from .reports import write_reports
+from .scope import extract_scope_candidates, normalize_confirmed_assets
 from .workspace import create_workspace
 
 console = Console()
@@ -20,7 +22,7 @@ console = Console()
 
 def log(message: str) -> None:
     now = datetime.now().astimezone().strftime("%H:%M:%S.%f")[:-3]
-    console.print(f"[dim]\[{now}][/dim] {message}")
+    console.print(f"[dim][{now}][/dim] {message}")
 
 
 def boot() -> None:
@@ -32,24 +34,33 @@ def boot() -> None:
     tasks = [
         "Initializing terminal interface",
         "Loading policy review module",
-        "Loading scope workspace manager",
+        "Loading candidate scope parser",
         "Loading evidence and report modules",
-        "Checking safe-mode defaults",
+        "Enforcing safe-mode defaults",
     ]
     with Progress(
-        SpinnerColumn(),
-        TextColumn("{task.description}"),
-        BarColumn(),
-        TimeElapsedColumn(),
-        console=console,
-        transient=True,
+        SpinnerColumn(), TextColumn("{task.description}"), BarColumn(),
+        TimeElapsedColumn(), console=console, transient=True,
     ) as progress:
         task = progress.add_task("Booting", total=len(tasks))
         for item in tasks:
             progress.update(task, description=item)
             time.sleep(0.12)
             progress.advance(task)
-    log("Core ready. Active testing is disabled until scope is reviewed.")
+    log("Core ready. No target is authorized by discovery alone.")
+
+
+def _save_scope(workspace: Path, program_url: str, assets: list[str]) -> None:
+    data = {
+        "program_url": program_url,
+        "assets": [{"host": asset, "operator_confirmed": True} for asset in assets],
+        "excluded_assets": [],
+        "confirmed_by_operator": True,
+        "confirmation_note": "Operator attested that each selected hostname is explicitly in scope in the current live policy.",
+    }
+    (workspace / "policy" / "scope.json").write_text(
+        json.dumps(data, indent=2) + "\n", encoding="utf-8"
+    )
 
 
 def run() -> None:
@@ -75,45 +86,91 @@ def run() -> None:
         )
         log("Policy snapshot saved.")
     except Exception as exc:
-        log(f"[red]Could not fetch policy page: {exc}[/red]")
+        log(f"[red]Could not fetch policy page: {type(exc).__name__}[/red]")
         console.print(f"Workspace retained for manual policy entry: {workspace}")
         return
 
-    console.clear()
+    candidates = extract_scope_candidates(policy_text)
+    (workspace / "reconnaissance" / "scope-candidates.json").write_text(
+        json.dumps({
+            "warning": "Candidates extracted from page text are not authorization.",
+            "candidates": candidates,
+        }, indent=2) + "\n",
+        encoding="utf-8",
+    )
     console.print(Panel(
-        f"[bold]Policy captured[/bold]\n{program_url}\n\n"
-        "[yellow]The page text is not proof of authorization.[/yellow] "
-        "Review the live program page and record exact in-scope and excluded assets.",
-        title="SCOPE REVIEW REQUIRED",
+        f"Policy captured: {program_url}\n"
+        f"Domain-like candidates found: {len(candidates)}\n\n"
+        "[yellow]Candidates are unverified. The parser cannot reliably understand exclusions, "
+        "wildcard semantics, program status, or policy exceptions.[/yellow]\n"
+        "Open the live policy and verify each exact hostname yourself.",
+        title="MANUAL SCOPE REVIEW",
         border_style="yellow",
     ))
-    console.print(f"Policy text: {workspace / 'policy' / 'policy-text.md'}")
-    console.print(f"Scope review: {workspace / 'policy' / 'scope-review.md'}")
-    console.print()
-    choice = questionary.select(
-        "What would you like to do next?",
-        choices=[
-            "Open scope review checklist (manual confirmation)",
-            "Finish and review saved workspace",
-        ],
+    if not candidates:
+        console.print(f"No domain candidates found. Review {workspace / 'policy' / 'policy-text.md'} manually.")
+        return
+
+    choices = questionary.checkbox(
+        "Select ONLY hostnames you personally verified as explicitly in scope (space to toggle, enter to continue):",
+        choices=[questionary.Choice(host, value=host) for host in candidates],
         use_shortcuts=True,
     ).ask()
+    if not choices:
+        console.print("[yellow]No assets selected. Workspace saved; no checks run.[/yellow]")
+        return
 
-    if choice == "Open scope review checklist (manual confirmation)":
-        console.print(Panel(
-            "1. Open the live policy URL.\n"
-            "2. Copy only explicitly in-scope assets into policy/scope.json.\n"
-            "3. Record exclusions, wildcard semantics, rate limits and prohibited tests.\n"
-            "4. Confirm the program is active and the policy has not changed.\n"
-            "5. Do not select assets discovered outside the written scope.",
-            title="Operator checklist",
-            border_style="cyan",
-        ))
-        console.print(f"Edit: {workspace / 'policy' / 'scope.json'}")
+    selected = normalize_confirmed_assets(choices)
+    if not selected:
+        console.print("[yellow]No valid concrete hostnames selected. No checks run.[/yellow]")
+        return
 
-    console.print()
-    console.print(f"[green]Workspace saved:[/green] {workspace}")
-    console.print("[dim]No vulnerability scan or active probing was started.[/dim]")
+    console.print(Panel(
+        "\n".join(f"• {host}" for host in selected),
+        title="SELECTED HOSTS — OPERATOR ATTESTATION REQUIRED",
+        border_style="cyan",
+    ))
+    console.print(
+        "Verify the program is active, every exact host is in scope, and one HEAD request "
+        "per host is permitted by the live policy."
+    )
+    if not questionary.confirm(
+        "I checked the live policy and confirm every selected host is explicitly in scope; proceed with one HTTPS HEAD request per host?",
+        default=False,
+    ).ask():
+        console.print("[yellow]Confirmation declined. No requests sent.[/yellow]")
+        return
+    if not questionary.confirm(
+        "I understand this is a low-impact metadata check, not an exploit scan, and I will stop if policy prohibits it?",
+        default=False,
+    ).ask():
+        console.print("[yellow]Safety confirmation declined. No requests sent.[/yellow]")
+        return
+
+    _save_scope(workspace, program_url, selected)
+    log(f"Operator-confirmed assets saved: {len(selected)}")
+    log("Starting one-request-per-host HTTPS metadata review; redirects disabled.")
+    try:
+        observations = run_metadata_checks(selected, workspace / "evidence", delay_seconds=1.0)
+    except Exception as exc:
+        log(f"[red]Checks stopped: {type(exc).__name__}[/red]")
+        return
+
+    for item in observations:
+        if "status_code" in item:
+            log(f"{item['asset']}: HTTP {item['status_code']} (metadata only)")
+        else:
+            log(f"{item['asset']}: request failed ({item.get('error', 'unknown error')})")
+
+    write_reports(workspace, selected, observations)
+    log("Evidence metadata and preliminary report saved.")
+    console.print(Panel(
+        f"Workspace: {workspace}\nHosts checked: {len(observations)}\n"
+        "Confirmed vulnerabilities: 0\nSeverity: not assigned",
+        title="RUN COMPLETE",
+        border_style="green",
+    ))
+    console.print("Review evidence manually. Do not report metadata observations as vulnerabilities.")
 
 
 def main() -> None:
