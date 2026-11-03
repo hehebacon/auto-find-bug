@@ -38,39 +38,39 @@ class Finding:
 
 # Pattern rules are intentionally conservative review signals, not proofs.
 _RULES = [
-    ("JS001", "HIGH", "Dynamic JavaScript evaluation", r"\\b(?:eval|new\\s+Function)\\s*\\(", "Avoid evaluating dynamically constructed JavaScript.", ("JavaScript", "JavaScript/JSX", "TypeScript", "TypeScript/TSX")),
-    ("JS002", "HIGH", "HTML injection sink", r"\\.innerHTML\\s*=", "Prefer textContent or safe DOM construction; sanitize rich HTML.", ("JavaScript", "JavaScript/JSX", "TypeScript", "TypeScript/TSX")),
-    ("JS003", "MEDIUM", "Document.write usage", r"\\bdocument\\.write\\s*\\(", "Avoid document.write; create DOM nodes safely.", ("JavaScript", "JavaScript/JSX", "TypeScript", "TypeScript/TSX")),
-    ("JS004", "HIGH", "Potential child-process execution", r"\\b(?:exec|execSync|spawn)\\s*\\(", "Avoid shell command construction; use fixed executables and validated argument arrays.", ("JavaScript", "TypeScript")),
-    ("JS005", "MEDIUM", "React raw HTML rendering", r"dangerouslySetInnerHTML\\s*=", "Avoid raw HTML rendering or sanitize content with a maintained sanitizer.", ("JavaScript/JSX", "TypeScript/TSX")),
-    ("PHP001", "HIGH", "PHP dynamic code execution", r"\\b(?:eval|assert)\\s*\\(", "Remove dynamic code execution and use explicit application logic.", ("PHP",)),
-    ("PHP002", "HIGH", "PHP command execution", r"\\b(?:shell_exec|system|passthru|exec)\\s*\\(", "Avoid shell execution; use fixed commands and strict argument handling.", ("PHP",)),
-    ("PHP003", "HIGH", "PHP unsafe deserialization", r"\\bunserialize\\s*\\(", "Do not unserialize untrusted input; use JSON and validate its schema.", ("PHP",)),
-    ("WEB001", "MEDIUM", "Potential inline event handler", r"\\bon(?:click|error|load|mouseover|submit)\\s*=\\s*[\\\"']", "Use addEventListener and keep executable code out of HTML attributes.", ("HTML",)),
-    ("C001", "HIGH", "Potentially unsafe C string copy", r"\\b(?:strcpy|strcat|sprintf|gets)\\s*\\(", "Use bounded operations, validate lengths, and prefer safer APIs; manually verify buffer sizes.", ("C", "C/C++ header", "C++ header", "C++")),
-    ("C002", "HIGH", "Native command execution", r"\\b(?:system|popen)\\s*\\(", "Avoid invoking a shell from native code; use safer process APIs and fixed arguments.", ("C", "C/C++ header", "C++ header", "C++")),
-    ("CS001", "HIGH", "C# process execution", r"\\bProcess\\.Start\\s*\\(", "Review whether arguments can be influenced by untrusted input; avoid shell execution.", ("C#",)),
-    ("CS002", "HIGH", "C# legacy binary deserialization", r"\\bBinaryFormatter\\b", "Avoid BinaryFormatter; use a safe data contract format.", ("C#",)),
-    ("JAVA001", "HIGH", "Java native command execution", r"\\bRuntime\\.getRuntime\\s*\\(\\s*\\)\\s*\\.exec\\s*\\(", "Avoid shell command construction and validate fixed executable arguments.", ("Java",)),
-    ("JAVA002", "HIGH", "Java object deserialization", r"\\bObjectInputStream\\b", "Do not deserialize untrusted Java object streams; use constrained data formats.", ("Java",)),
-    ("RS001", "MEDIUM", "Rust unsafe block", r"\\bunsafe\\s*\\{", "Review unsafe blocks for memory and aliasing invariants; document the safety argument.", ("Rust",)),
-    ("RS002", "MEDIUM", "Rust raw pointer conversion", r"\\b(?:transmute|from_raw_parts|from_raw)\\s*(?:::<[^>]+>)?\\s*\\(", "Review pointer validity, alignment, lifetime, and size assumptions.", ("Rust",)),
-    ("SOL001", "HIGH", "Solidity tx.origin authorization", r"\\btx\\.origin\\b", "Use msg.sender and a carefully designed authorization model instead of tx.origin.", ("Solidity",)),
-    ("SOL002", "HIGH", "Solidity delegatecall", r"\\.delegatecall\\s*\\(", "Review delegatecall target control, storage layout, and authorization.", ("Solidity",)),
-    ("SOL003", "HIGH", "Solidity low-level call", r"\\.call\\s*(?:\\{|\\()", "Check return values and reentrancy implications; prefer safer interfaces where possible.", ("Solidity",)),
-    ("SOL004", "HIGH", "Solidity selfdestruct", r"\\bselfdestruct\\s*\\(", "Review whether contract destruction is intended and properly access-controlled.", ("Solidity",)),
-    ("PAS001", "MEDIUM", "Pascal pointer or untyped memory operation", r"\\b(?:GetMem|ReallocMem|Move|FillChar)\\s*\\(", "Validate buffer sizes and pointer lifetimes around manual memory operations.", ("Pascal",)),
-    ("SQL001", "HIGH", "Potential dynamic SQL construction", r"(?:EXEC(?:UTE)?\\s*\\(\\s*['\"]?\\s*\\+|\\b(?:CONCAT|CONCAT_WS)\\s*\\([^;]*(?:SELECT|UPDATE|INSERT|DELETE))", "Use parameterized statements and avoid concatenating untrusted values into SQL.", ("SQL",)),
-    ("SH001", "HIGH", "Shell dynamic evaluation", r"\\beval\\s+['\"]?\\$", "Avoid eval of expanded data; use arrays and explicit argument handling.", ("Shell",)),
-    ("SH002", "HIGH", "Piped remote script execution", r"(?:curl|wget)[^\\n|]*\\|\\s*(?:sh|bash)", "Do not pipe remote content directly into a shell; verify and inspect downloads first.", ("Shell",)),
-    ("SH003", "MEDIUM", "World-writable permission command", r"\\bchmod\\s+(?:-R\\s+)?777\\b", "Grant only the minimum required permissions.", ("Shell",)),
-    ("BAT001", "HIGH", "Batch dynamic command expansion", r"\\bcall\\s+%[^%]+%", "Review CALL with expanded variables; validate values and avoid constructing commands from untrusted input.", ("Batch",)),
-    ("BAT002", "MEDIUM", "Batch delayed expansion enabled", r"(?i)\\bsetlocal\\s+enabledelayedexpansion\\b", "Review exclamation-mark expansion where values may contain special characters.", ("Batch",)),
-    ("CSS001", "HIGH", "Legacy CSS expression()", r"\\bexpression\\s*\\(", "Remove legacy expression(); use standard CSS properties.", ("CSS",)),
+    ("JS001", "HIGH", "Dynamic JavaScript evaluation", r"\b(?:eval|new\s+Function)\s*\(", "Avoid evaluating dynamically constructed JavaScript.", ("JavaScript", "JavaScript/JSX", "TypeScript", "TypeScript/TSX")),
+    ("JS002", "HIGH", "HTML injection sink", r"\.innerHTML\s*=", "Prefer textContent or safe DOM construction; sanitize rich HTML.", ("JavaScript", "JavaScript/JSX", "TypeScript", "TypeScript/TSX")),
+    ("JS003", "MEDIUM", "Document.write usage", r"\bdocument\.write\s*\(", "Avoid document.write; create DOM nodes safely.", ("JavaScript", "JavaScript/JSX", "TypeScript", "TypeScript/TSX")),
+    ("JS004", "HIGH", "Potential child-process execution", r"\b(?:exec|execSync|spawn)\s*\(", "Avoid shell command construction; use fixed executables and validated argument arrays.", ("JavaScript", "TypeScript")),
+    ("JS005", "MEDIUM", "React raw HTML rendering", r"dangerouslySetInnerHTML\s*=", "Avoid raw HTML rendering or sanitize content with a maintained sanitizer.", ("JavaScript/JSX", "TypeScript/TSX")),
+    ("PHP001", "HIGH", "PHP dynamic code execution", r"\b(?:eval|assert)\s*\(", "Remove dynamic code execution and use explicit application logic.", ("PHP",)),
+    ("PHP002", "HIGH", "PHP command execution", r"\b(?:shell_exec|system|passthru|exec)\s*\(", "Avoid shell execution; use fixed commands and strict argument handling.", ("PHP",)),
+    ("PHP003", "HIGH", "PHP unsafe deserialization", r"\bunserialize\s*\(", "Do not unserialize untrusted input; use JSON and validate its schema.", ("PHP",)),
+    ("WEB001", "MEDIUM", "Potential inline event handler", r"\bon(?:click|error|load|mouseover|submit)\s*=\s*[\\"']", "Use addEventListener and keep executable code out of HTML attributes.", ("HTML",)),
+    ("C001", "HIGH", "Potentially unsafe C string copy", r"\b(?:strcpy|strcat|sprintf|gets)\s*\(", "Use bounded operations, validate lengths, and prefer safer APIs; manually verify buffer sizes.", ("C", "C/C++ header", "C++ header", "C++")),
+    ("C002", "HIGH", "Native command execution", r"\b(?:system|popen)\s*\(", "Avoid invoking a shell from native code; use safer process APIs and fixed arguments.", ("C", "C/C++ header", "C++ header", "C++")),
+    ("CS001", "HIGH", "C# process execution", r"\bProcess\.Start\s*\(", "Review whether arguments can be influenced by untrusted input; avoid shell execution.", ("C#",)),
+    ("CS002", "HIGH", "C# legacy binary deserialization", r"\bBinaryFormatter\b", "Avoid BinaryFormatter; use a safe data contract format.", ("C#",)),
+    ("JAVA001", "HIGH", "Java native command execution", r"\bRuntime\.getRuntime\s*\(\s*\)\s*\.exec\s*\(", "Avoid shell command construction and validate fixed executable arguments.", ("Java",)),
+    ("JAVA002", "HIGH", "Java object deserialization", r"\bObjectInputStream\b", "Do not deserialize untrusted Java object streams; use constrained data formats.", ("Java",)),
+    ("RS001", "MEDIUM", "Rust unsafe block", r"\bunsafe\s*\{", "Review unsafe blocks for memory and aliasing invariants; document the safety argument.", ("Rust",)),
+    ("RS002", "MEDIUM", "Rust raw pointer conversion", r"\b(?:transmute|from_raw_parts|from_raw)\s*(?:::<[^>]+>)?\s*\(", "Review pointer validity, alignment, lifetime, and size assumptions.", ("Rust",)),
+    ("SOL001", "HIGH", "Solidity tx.origin authorization", r"\btx\.origin\b", "Use msg.sender and a carefully designed authorization model instead of tx.origin.", ("Solidity",)),
+    ("SOL002", "HIGH", "Solidity delegatecall", r"\.delegatecall\s*\(", "Review delegatecall target control, storage layout, and authorization.", ("Solidity",)),
+    ("SOL003", "HIGH", "Solidity low-level call", r"\.call\s*(?:\{|\()", "Check return values and reentrancy implications; prefer safer interfaces where possible.", ("Solidity",)),
+    ("SOL004", "HIGH", "Solidity selfdestruct", r"\bselfdestruct\s*\(", "Review whether contract destruction is intended and properly access-controlled.", ("Solidity",)),
+    ("PAS001", "MEDIUM", "Pascal pointer or untyped memory operation", r"\b(?:GetMem|ReallocMem|Move|FillChar)\s*\(", "Validate buffer sizes and pointer lifetimes around manual memory operations.", ("Pascal",)),
+    ("SQL001", "HIGH", "Potential dynamic SQL construction", r"(?:EXEC(?:UTE)?\s*\(\s*['\"]?\s*\+|\b(?:CONCAT|CONCAT_WS)\s*\([^;]*(?:SELECT|UPDATE|INSERT|DELETE))", "Use parameterized statements and avoid concatenating untrusted values into SQL.", ("SQL",)),
+    ("SH001", "HIGH", "Shell dynamic evaluation", r"\beval\s+['\"]?\$", "Avoid eval of expanded data; use arrays and explicit argument handling.", ("Shell",)),
+    ("SH002", "HIGH", "Piped remote script execution", r"(?:curl|wget)[^\n|]*\|\s*(?:sh|bash)", "Do not pipe remote content directly into a shell; verify and inspect downloads first.", ("Shell",)),
+    ("SH003", "MEDIUM", "World-writable permission command", r"\bchmod\s+(?:-R\s+)?777\b", "Grant only the minimum required permissions.", ("Shell",)),
+    ("BAT001", "HIGH", "Batch dynamic command expansion", r"\bcall\s+%[^%]+%", "Review CALL with expanded variables; validate values and avoid constructing commands from untrusted input.", ("Batch",)),
+    ("BAT002", "MEDIUM", "Batch delayed expansion enabled", r"(?i)\bsetlocal\s+enabledelayedexpansion\b", "Review exclamation-mark expansion where values may contain special characters.", ("Batch",)),
+    ("CSS001", "HIGH", "Legacy CSS expression()", r"\bexpression\s*\(", "Remove legacy expression(); use standard CSS properties.", ("CSS",)),
     ("YAML001", "HIGH", "Potential Python object YAML tag", r"!!python/(?:object|object/new|module|name)", "Do not load untrusted YAML with constructors capable of creating Python objects.", ("YAML",)),
     ("XML001", "HIGH", "XML document type declaration", r"<!DOCTYPE", "If parsing untrusted XML, disable external entities and DTD processing.", ("XML",)),
-    ("CFG001", "MEDIUM", "Debug mode enabled in configuration", r'(?i)["\\']?(?:debug|debug_mode)["\\']?\\s*:\\s*(?:true|1|["\\']true["\\'])', "Disable debug mode in production and keep detailed errors out of public responses.", ("JSON", "JSONC", "YAML")),
-    ("CFG002", "MEDIUM", "Wildcard CORS configuration", r'(?i)["\\']?(?:access-control-allow-origin|allow_origins|cors)["\\']?\\s*:\\s*(?:\\*|\\[\\s*["\\']\\*["\\']\\s*\\])', "Restrict cross-origin access to the specific trusted origins required by the application.", ("JSON", "JSONC", "YAML")),
+    ("CFG001", "MEDIUM", "Debug mode enabled in configuration", r'(?i)["\']?(?:debug|debug_mode)["\']?\s*:\s*(?:true|1|["\']true["\'])', "Disable debug mode in production and keep detailed errors out of public responses.", ("JSON", "JSONC", "YAML")),
+    ("CFG002", "MEDIUM", "Wildcard CORS configuration", r'(?i)["\']?(?:access-control-allow-origin|allow_origins|cors)["\']?\s*:\s*(?:\*|\[\s*["\']\*["\']\s*\])', "Restrict cross-origin access to the specific trusted origins required by the application.", ("JSON", "JSONC", "YAML")),
 ]
 
 
@@ -164,7 +164,7 @@ def analyze_source(root: str | Path) -> dict:
                     continue
                 compiled = re.compile(pattern)
                 for match in compiled.finditer(source):
-                    line = source.count("\\n", 0, match.start()) + 1
+                    line = source.count("\n", 0, match.start()) + 1
                     lines = source.splitlines()
                     evidence = lines[line - 1].strip()[:180] if lines and line <= len(lines) else ""
                     findings.append(Finding(rule_id, severity, title, relative, line, evidence, recommendation))
@@ -193,7 +193,7 @@ def write_code_report(result: dict, output: str | Path, fmt: str = "md") -> Path
     path = Path(output).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
     if fmt == "json":
-        path.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\\n", encoding="utf-8")
+        path.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     else:
         lines = ["# Static Source Code Review", "", f"- Root: {result['root']}",
                  f"- Files scanned: {result['files_scanned']}", f"- Languages detected: {result.get('language_count', 0)}",
@@ -207,5 +207,5 @@ def write_code_report(result: dict, output: str | Path, fmt: str = "md") -> Path
                           f"- Confidence: {item['confidence']}", f"- Evidence: `{item['evidence']}`",
                           f"- Recommendation: {item['recommendation']}", ""])
         lines.extend(["## Limitations", *[f"- {item}" for item in result["limitations"]], ""])
-        path.write_text("\\n".join(lines), encoding="utf-8")
+        path.write_text("\n".join(lines), encoding="utf-8")
     return path
