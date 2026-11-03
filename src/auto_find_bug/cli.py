@@ -20,6 +20,7 @@ from .policy import (
     validate_program_url,
 )
 from .reports import write_reports
+from .scope_review import write_scope_review
 from .scope import extract_scope_candidates, normalize_confirmed_assets
 from .workspace import create_workspace
 
@@ -79,7 +80,8 @@ def run() -> None:
         console.print(f"[red]Invalid URL:[/red] {exc}")
         return
 
-    workspace = create_workspace(program_url)
+    program_handle = hackerone_handle_from_url(program_url)
+    workspace = create_workspace(program_url, program_name=program_handle)
     log(f"Created workspace: {workspace}")
 
     try:
@@ -109,6 +111,7 @@ def run() -> None:
                     (workspace / "policy" / "scope-inventory.json").write_text(
                         json.dumps(snapshot, indent=2) + "\n", encoding="utf-8"
                     )
+                    review = write_scope_review(workspace, snapshot)
                     (workspace / "policy" / "extraction-status.json").write_text(
                         json.dumps({
                             "status": "THIRD_PARTY_SCOPE_SNAPSHOT_IMPORTED",
@@ -134,6 +137,9 @@ def run() -> None:
                         border_style="yellow",
                     ))
                     console.print(f"Saved inventory: {workspace / 'policy' / 'scope-inventory.json'}")
+                    console.print(f"Scope review: {workspace / 'policy' / 'scope-review.md'}")
+                    console.print(f"Vulnerability taxonomy: {workspace / 'reconnaissance' / 'vulnerability-class-checklist.md'}")
+                    console.print(f"Snapshot classification: {review['counts']}")
                     console.print(f"Canonical policy: {program_url}")
                     console.print("Review the live HackerOne policy and exclusions separately before any research.")
                     return
