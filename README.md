@@ -30,6 +30,19 @@ A scope-first Bug Bounty policy review assistant.
 
 HackerOne's official Hacker API documents the structured-scopes endpoint, but API access uses an API username/token. See the official [Hacker API documentation](https://api.hackerone.com/hacker-resources/) and [authentication guide](https://api.hackerone.com/getting-started-hacker-api/).
 
+## Online connection and privacy mode
+
+Public policy-page and third-party public-scope HTTP requests use the shared privacy-aware client in `auto_find_bug.network`.
+
+- Privacy mode is enabled by default. Without an explicit `AFB_HTTPS_PROXY`, online HTTP requests are blocked rather than silently sent directly.
+- Configure an HTTP or HTTPS proxy with `AFB_HTTPS_PROXY` in the shell environment before launching the CLI.
+- `AFB_PRIVACY_MODE=0` explicitly disables the fail-closed requirement; use this only when you understand that requests may connect directly.
+- The client ignores ambient proxy environment variables (`trust_env=False`), so only the explicitly configured proxy is used.
+- This is not anonymity protection: the proxy provider can see the connecting IP, and local hostname validation currently performs DNS lookups from the device. DNS metadata may therefore be visible to the configured resolver.
+- No proxy setup can establish authorization or make testing a target permissible.
+
+The online feature fetches only the exact public policy URL supplied by the operator and the documented public snapshot URL for supported HackerOne programs. Redirects are refused; no target assets are crawled, probed, or scanned.
+
 ## Safety
 
 - Discovered assets are inventory records, not authorization.
