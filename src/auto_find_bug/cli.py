@@ -28,7 +28,7 @@ from .scope import extract_scope_candidates, normalize_confirmed_assets
 from .workspace import create_workspace
 from . import research
 from .research import ResearchError
-from . import code_audit, web_audit
+from . import code_audit, web_audit, workspace_review
 
 console = Console()
 
@@ -383,12 +383,53 @@ def _web_audit_command(args: argparse.Namespace) -> int:
         return 2
 
 
+def _workspace_review_command(args: argparse.Namespace) -> int:
+    try:
+        result = workspace_review.review_source(args.workspace, args.source)
+        console.print(Panel(
+            f"Files scanned: {result['files_scanned']}\\nNew review leads: {result['finding_count']}\\n"
+            f"Status: {result['status']}\\nFindings: {result['findings_path']}\\n"
+            f"Network activity: none",
+            title="WORKSPACE SOURCE REVIEW",
+            border_style="cyan",
+        ))
+        console.print("[dim]All results start as potential leads. No target requests or code execution occur.[/dim]")
+        return 0
+    except (ValueError, OSError) as exc:
+        console.print(f"[red]Workspace review failed:[/red] {exc}")
+        return 2
+
+
+def _triage_command(args: argparse.Namespace) -> int:
+    try:
+        result = workspace_review.triage_finding(
+            args.workspace, args.finding_id, args.status, args.note, args.evidence_ref
+        )
+        console.print_json(json.dumps(result, ensure_ascii=False))
+        console.print("[dim]A validated status records a human review decision; the tool does not verify exploitability or program acceptance.[/dim]")
+        return 0
+    except (ValueError, OSError) as exc:
+        console.print(f"[red]Triage failed:[/red] {exc}")
+        return 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="auto-find-bug",
         description="Scope-first Bug Bounty policy review and passive public advisory research.",
     )
     commands = parser.add_subparsers(dest="command")
+
+    review_parser = commands.add_parser("review-source", help="Import local static-analysis leads into a Bug Bounty workspace.")
+    review_parser.add_argument("workspace", help="Existing program workspace directory.")
+    review_parser.add_argument("source", help="Local source file or project directory.")
+
+    triage_parser = commands.add_parser("triage", help="Record a human review decision for a workspace finding.")
+    triage_parser.add_argument("workspace", help="Existing program workspace directory.")
+    triage_parser.add_argument("finding_id", help="Finding ID shown in findings.json.")
+    triage_parser.add_argument("--status", choices=("needs_review", "validated", "false_positive"), required=True)
+    triage_parser.add_argument("--note", required=True, help="Human reviewer rationale.")
+    triage_parser.add_argument("--evidence-ref", help="For validated status, path to an existing file under workspace/evidence/.")
 
     code_parser = commands.add_parser("code-audit", help="Run local static security checks on source code.")
     code_parser.add_argument("path", help="Source file or project directory to review.")
@@ -436,6 +477,10 @@ def main() -> None:
     args = parser.parse_args()
     if args.command == "research":
         raise SystemExit(_research_command(args))
+    if args.command == "review-source":
+        raise SystemExit(_workspace_review_command(args))
+    if args.command == "triage":
+        raise SystemExit(_triage_command(args))
     if args.command == "code-audit":
         raise SystemExit(_code_audit_command(args))
     if args.command == "web-audit":
