@@ -1,14 +1,15 @@
 import unittest
 
 from auto_find_bug.scope import extract_scope_candidates, normalize_confirmed_assets
+from auto_find_bug.checks import _safe_target
 
 
 class ScopeTests(unittest.TestCase):
-    def test_extracts_domains_as_candidates(self):
+    def test_extracts_concrete_domains_as_candidates(self):
         text = "In scope: https://app.example.com and api.example.org. Excluded: *.legacy.example.net"
         self.assertEqual(
             extract_scope_candidates(text),
-            ["api.example.org", "app.example.com", "legacy.example.net"],
+            ["api.example.org", "app.example.com"],
         )
 
     def test_normalizes_only_concrete_domains(self):
@@ -16,6 +17,13 @@ class ScopeTests(unittest.TestCase):
             normalize_confirmed_assets([" App.Example.com ", "*.example.com", "https://x.example.com/path", "api.example.org"]),
             ["app.example.com", "api.example.org"],
         )
+
+    def test_target_builder_rejects_paths_and_plain_http(self):
+        self.assertEqual(_safe_target("app.example.com"), "https://app.example.com/")
+        for value in ("http://app.example.com", "app.example.com/admin", "app.example.com:8443"):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    _safe_target(value)
 
 
 if __name__ == "__main__":
