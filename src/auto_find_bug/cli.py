@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -11,8 +12,10 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 from rich.prompt import Prompt
+from rich.table import Table
 
 from .hackerone_scope import fetch_hackerone_public_snapshot, hackerone_handle_from_url
+from .network import PrivacyConfigurationError
 from .policy import (
     fetch_policy,
     load_manual_policy_text,
@@ -24,6 +27,7 @@ from .policy_analysis import write_policy_analysis
 from .scope_review import write_scope_review
 from .scope import extract_scope_candidates, normalize_confirmed_assets
 from .workspace import create_workspace
+from . import research
 
 console = Console()
 
@@ -113,7 +117,7 @@ def run() -> None:
                         json.dumps(snapshot, indent=2) + "\n", encoding="utf-8"
                     )
                     review = write_scope_review(workspace, snapshot)
-                    policy_analysis = write_policy_analysis(workspace, snapshot_policy or snapshot_text, program_url)
+                    write_policy_analysis(workspace, snapshot_policy or snapshot_text, program_url)
                     (workspace / "policy" / "extraction-status.json").write_text(
                         json.dumps({
                             "status": "THIRD_PARTY_SCOPE_SNAPSHOT_IMPORTED",
@@ -293,16 +297,97 @@ def run() -> None:
     )
 
 
-def main() -> None:
+def _research_command(args: argparse.Namespace) -> int:
+    try:
+        if args.research_action == "search":
+            result = research.search_nvd(args.keyword, args.limit)
+            console.print(Panel(
+                f"Query: {result['query']}\nReported: {result['total_results_reported']}\n"
+                f"Fetched: {result['fetched']}\nSaved/updated: {result['saved_or_updated']}\n"
+                f"Database: {result['database']}",
+                title="NVD PUBLIC ADVISORY SEARCH",
+                border_style="cyan",
+            ))
+            for item in result["records"]:
+                console.print(f"[bold]{item['id']}[/bold]  [{item['severity']}]  CVSS: {item['cvss'] if item['cvss'] is not None else 'N/A'}")
+                console.print(f"  {item['summary'][:240]}")
+                console.print(f"  Categories: {', '.join(item['categories'])}")
+                console.print(f"  {item['source_url']}")
+            console.print(f"[dim]{result['note']}[/dim]")
+        elif args.research_action == "sync-kev":
+            result = research.sync_cisa_kev()
+            console.print_json(json.dumps(result, ensure_ascii=False))
+        elif args.research_action == "list":
+            records = research.list_advisories(args.limit, args.source, args.category)
+            table = Table(title="Stored public vulnerability records")
+            for heading in ("ID", "Source", "Severity", "CVSS", "Published", "Categories"):
+                table.add_column(heading, overflow="fold")
+            for item in records:
+                table.add_row(
+                    item["id"], item["source"], item["severity"],
+                    str(item["cvss"]) if item["cvss"] is not None else "—",
+                    str(item["published"] or "—"),
+                    ", ".join(item["categories"]),
+                )
+            console.print(table)
+            console.print(f"{len(records)} record(s) shown. Database: {research.database_path()}")
+        elif args.research_action == "status":
+            console.print_json(json.dumps(research.research_status(), ensure_ascii=False))
+        elif args.research_action == "export":
+            path = research.export_advisories(args.output, args.format, args.limit)
+            console.print(f"[green]Exported {args.limit} most recent record(s) to {path}[/green]")
+        return 0
+    except (ValueError, ResearchError, PrivacyConfigurationError) as exc:
+        console.print(f"[red]Research command failed:[/red] {exc}")
+        return 2
+    except Exception as exc:
+        console.print(f"[red]Unexpected research error:[/red] {type(exc).__name__}: {exc}")
+        return 1
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="auto-find-bug",
-        description="Scope-first Bug Bounty policy review assistant.",
+        description="Scope-first Bug Bounty policy review and passive public advisory research.",
     )
-    parser.parse_args()
-    try:
-        run()
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Cancelled by operator.[/yellow]")
+    commands = parser.add_subparsers(dest="command")
+
+    research_parser = commands.add_parser("research", help="Search and organize public vulnerability advisories.")
+    actions = research_parser.add_subparsers(dest="research_action", required=True)
+
+    search_parser = actions.add_parser("search", help="Search public NVD CVE records by keyword.")
+    search_parser.add_argument("keyword", help="Keyword or technology name; no target URL is accepted.")
+    search_parser.add_argument("--limit", type=int, default=25, help="Maximum results (1-100).")
+
+    actions.add_parser("sync-kev", help="Import CISA's public Known Exploited Vulnerabilities catalog.")
+
+    list_parser = actions.add_parser("list", help="List locally stored public advisory records.")
+    list_parser.add_argument("--limit", type=int, default=25)
+    list_parser.add_argument("--source", choices=("NVD", "CISA KEV"))
+    list_parser.add_argument("--category", help="Filter by taxonomy category text.")
+
+    actions.add_parser("status", help="Show local database and privacy-aware connection status.")
+
+    export_parser = actions.add_parser("export", help="Export stored records as Markdown or JSON.")
+    export_parser.add_argument("--format", choices=("md", "json"), default="md")
+    export_parser.add_argument("--output", default="public-vulnerability-digest.md")
+    export_parser.add_argument("--limit", type=int, default=200)
+
+    return parser
+
+
+def main() -> None:
+    if len(sys.argv) == 1:
+        try:
+            run()
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Cancelled by operator.[/yellow]")
+        return
+    parser = build_parser()
+    args = parser.parse_args()
+    if args.command == "research":
+        raise SystemExit(_research_command(args))
+    parser.print_help()
 
 
 if __name__ == "__main__":
