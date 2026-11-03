@@ -12,6 +12,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeEl
 from rich.prompt import Prompt
 
 from .checks import run_metadata_checks
+from .hackerone_scope import fetch_hackerone_public_snapshot, hackerone_handle_from_url
 from .policy import (
     fetch_policy,
     load_manual_policy_text,
@@ -88,6 +89,57 @@ def run() -> None:
 
         extraction_method = "page_html"
         if policy_extraction_incomplete(policy_text):
+            handle = hackerone_handle_from_url(program_url)
+            if handle:
+                try:
+                    with console.status("[cyan]Looking up the public structured-scope snapshot..."):
+                        snapshot = fetch_hackerone_public_snapshot(program_url)
+                    (workspace / "policy" / "public-scope-source.html").write_text(
+                        snapshot.pop("page_html"), encoding="utf-8"
+                    )
+                    snapshot_text = snapshot.pop("page_text")
+                    snapshot_policy = snapshot.pop("policy_text")
+                    (workspace / "policy" / "policy-text.md").write_text(
+                        "# Policy snapshot (third-party mirror)\n\n"
+                        "Canonical source: " + program_url + "\n"
+                        "Mirror source: " + snapshot["source_url"] + "\n\n"
+                        + (snapshot_policy or snapshot_text) + "\n",
+                        encoding="utf-8",
+                    )
+                    (workspace / "policy" / "scope-inventory.json").write_text(
+                        json.dumps(snapshot, indent=2) + "\n", encoding="utf-8"
+                    )
+                    (workspace / "policy" / "extraction-status.json").write_text(
+                        json.dumps({
+                            "status": "THIRD_PARTY_SCOPE_SNAPSHOT_IMPORTED",
+                            "method": "bastet_public_snapshot",
+                            "program_handle": handle,
+                            "asset_count": snapshot["asset_count"],
+                            "exclusions_complete": False,
+                            "authorization": "not_established",
+                        }, indent=2) + "\n",
+                        encoding="utf-8",
+                    )
+                    eligible = sum(1 for item in snapshot["assets"] if item["submission_eligible"])
+                    bounty = sum(1 for item in snapshot["assets"] if item["bounty_eligible"])
+                    console.print(Panel(
+                        f"Program: {handle}\n"
+                        f"Assets imported: {snapshot['asset_count']}\n"
+                        f"Submission-eligible in snapshot: {eligible}\n"
+                        f"Bounty-eligible in snapshot: {bounty}\n"
+                        f"Snapshot timestamp: {snapshot.get('snapshot_publicly_verified_at') or 'not provided'}\n\n"
+                        "[yellow]Third-party snapshot only. Exclusions may be missing and data may be stale. "
+                        "This is an inventory, NOT authorization. No targets will be checked.[/yellow]",
+                        title="PUBLIC SCOPE INVENTORY IMPORTED",
+                        border_style="yellow",
+                    ))
+                    console.print(f"Saved inventory: {workspace / 'policy' / 'scope-inventory.json'}")
+                    console.print(f"Canonical policy: {program_url}")
+                    console.print("Review the live HackerOne policy and exclusions separately before any research.")
+                    return
+                except Exception as mirror_exc:
+                    log(f"[yellow]Public snapshot unavailable: {type(mirror_exc).__name__}; using manual fallback.[/yellow]")
+
             console.print(Panel(
                 "The page returned only a short HTML shell/title. This commonly happens when "
                 "the policy content is rendered by JavaScript. The tool will NOT guess assets "
