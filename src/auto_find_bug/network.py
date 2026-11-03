@@ -31,7 +31,7 @@ def privacy_status() -> dict:
         'proxy_configured': bool(proxy),
         'online_access': 'proxy_only' if enabled and proxy else ('blocked_until_proxy_configured' if enabled else 'direct_or_environment_network'),
         'environment_proxy_trust': False,
-        'note': 'A proxy may hide the device IP from destination sites, but the proxy provider can see the connecting IP. This status does not independently verify anonymity or prevent all metadata disclosure.',
+        'note': 'A proxy carries HTTP requests through the proxy provider, which can see the connecting IP. Local hostname validation still performs DNS lookups from this device, so DNS metadata may be visible to the configured resolver. This is not an anonymity guarantee.',
     }
 
 def create_http_client(**kwargs) -> httpx.Client:
