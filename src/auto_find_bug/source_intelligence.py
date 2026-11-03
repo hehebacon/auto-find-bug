@@ -123,6 +123,9 @@ def analyze_apk(apk_path: str | Path) -> dict[str, Any]:
         names = [item.filename for item in infos]
         manifest_status = "missing"
         manifest_text = ""
+        permissions: list[str] = []
+        package = None
+        sdk = {}
         if "AndroidManifest.xml" in names:
             raw = archive.read("AndroidManifest.xml")
             try:
@@ -147,9 +150,6 @@ def analyze_apk(apk_path: str | Path) -> dict[str, Any]:
                     manifest_status = "binary_xml_decode_error:" + type(exc).__name__
         dex = [name for name in names if re.fullmatch(r"classes(?:\d+)?\.dex", PurePosixPath(name).name)]
         native = [name for name in names if name.startswith("lib/") and name.endswith(".so")]
-        permissions: list[str] = []
-        package = None
-        sdk = {}
         if manifest_text:
             try:
                 root = ET.fromstring(manifest_text)
