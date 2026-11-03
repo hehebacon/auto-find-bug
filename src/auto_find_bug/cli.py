@@ -28,6 +28,7 @@ from .scope import extract_scope_candidates, normalize_confirmed_assets
 from .workspace import create_workspace
 from . import research
 from .research import ResearchError
+from . import code_audit, web_audit
 
 console = Console()
 
@@ -345,12 +346,60 @@ def _research_command(args: argparse.Namespace) -> int:
         return 1
 
 
+def _code_audit_command(args: argparse.Namespace) -> int:
+    try:
+        result = code_audit.analyze_source(args.path)
+        output = code_audit.write_code_report(result, args.output, args.format)
+        console.print(Panel(
+            f"Files scanned: {result['files_scanned']}\\nFindings: {result['finding_count']}\\nReport: {output}",
+            title="LOCAL STATIC SOURCE REVIEW",
+            border_style="cyan",
+        ))
+        for item in result["findings"]:
+            console.print(f"[bold]{item['severity']}[/bold] {item['rule_id']} {item['file']}:{item['line']} — {item['title']}")
+        console.print("[dim]Heuristic findings require manual review; no source code was executed and no network requests were made.[/dim]")
+        return 0
+    except (ValueError, OSError) as exc:
+        console.print(f"[red]Code review failed:[/red] {exc}")
+        return 2
+
+
+def _web_audit_command(args: argparse.Namespace) -> int:
+    try:
+        result = web_audit.audit_public_page(args.url, authorized=args.confirm_authorized)
+        output = web_audit.write_web_report(result, args.output, args.format)
+        console.print(Panel(
+            f"URL: {result['url']}\\nHTTP status: {result['http_status']}\\n"
+            f"Requests sent: {result['requests_sent']}\\nFindings: {result['finding_count']}\\nReport: {output}",
+            title="PASSIVE WEB SECURITY REVIEW",
+            border_style="cyan",
+        ))
+        for item in result["findings"]:
+            console.print(f"[bold]{item['severity']}[/bold] {item['rule_id']} — {item['title']}")
+        console.print("[dim]One read-only page request only. No crawling, payloads, login, or form submission.[/dim]")
+        return 0
+    except (ValueError, RuntimeError, OSError) as exc:
+        console.print(f"[red]Web review failed:[/red] {exc}")
+        return 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="auto-find-bug",
         description="Scope-first Bug Bounty policy review and passive public advisory research.",
     )
     commands = parser.add_subparsers(dest="command")
+
+    code_parser = commands.add_parser("code-audit", help="Run local static security checks on source code.")
+    code_parser.add_argument("path", help="Source file or project directory to review.")
+    code_parser.add_argument("--format", choices=("md", "json"), default="md")
+    code_parser.add_argument("--output", default="code-security-review.md")
+
+    web_parser = commands.add_parser("web-audit", help="Review one authorized HTTPS page without crawling or probing.")
+    web_parser.add_argument("url", help="Exact HTTPS page URL to review.")
+    web_parser.add_argument("--confirm-authorized", action="store_true", help="Confirm you own the site or have explicit permission.")
+    web_parser.add_argument("--format", choices=("md", "json"), default="md")
+    web_parser.add_argument("--output", default="web-security-review.md")
 
     research_parser = commands.add_parser("research", help="Search and organize public vulnerability advisories.")
     actions = research_parser.add_subparsers(dest="research_action", required=True)
@@ -387,6 +436,10 @@ def main() -> None:
     args = parser.parse_args()
     if args.command == "research":
         raise SystemExit(_research_command(args))
+    if args.command == "code-audit":
+        raise SystemExit(_code_audit_command(args))
+    if args.command == "web-audit":
+        raise SystemExit(_web_audit_command(args))
     parser.print_help()
 
 
