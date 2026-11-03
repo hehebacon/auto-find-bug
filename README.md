@@ -1,6 +1,6 @@
 # Auto Find Bug
 
-A scope-first Bug Bounty policy review assistant.
+A scope-first Bug Bounty policy review and passive public vulnerability-intelligence assistant.
 
 ## Workflow
 
@@ -43,6 +43,51 @@ Public policy-page and third-party public-scope HTTP requests use the shared pri
 
 The online feature fetches only the exact public policy URL supplied by the operator and the documented public snapshot URL for supported HackerOne programs. Redirects are refused; no target assets are crawled, probed, or scanned.
 
+## Passive public advisory research (MVP)
+
+The `research` CLI searches and stores public vulnerability records. It does not interact with target assets.
+
+### Sources
+
+- **NVD CVE API 2.0** — keyword search, CVE identifiers, English descriptions, CVSS metadata when published, CWE identifiers, publication/modification dates, and public references.
+- **CISA Known Exploited Vulnerabilities (KEV) catalog** — imports CISA's public catalog and marks records as listed in that catalog.
+
+These sources are deliberately narrow and attributable. The tool does not scrape arbitrary websites, search private bug-bounty reports, collect exploit code, or claim to discover unknown/zero-day vulnerabilities.
+
+### Commands
+
+```bash
+# Search public NVD records by keyword (maximum 100 per request)
+auto-find-bug research search "SQL injection" --limit 25
+
+# Import/update the public CISA KEV catalog
+auto-find-bug research sync-kev
+
+# View local records
+auto-find-bug research list --limit 25
+auto-find-bug research list --source "CISA KEV"
+auto-find-bug research list --category "Authorization"
+
+# Inspect database and connection mode without making a network request
+auto-find-bug research status
+
+# Export a Markdown or JSON digest
+auto-find-bug research export --format md --output reports/public-vulnerability-digest.md
+auto-find-bug research export --format json --output reports/public-vulnerability-digest.json
+```
+
+### Storage and classification
+
+- Default SQLite database: `tools/outdata/public-research/research.sqlite3`.
+- Override the path with `AFB_RESEARCH_DB=/path/to/research.sqlite3`.
+- CVE IDs are primary keys; importing the same record updates it instead of creating duplicates.
+- Each record retains source, dates, severity/CVSS if supplied, CWE identifiers, references, raw source JSON, and import timestamp.
+- Heuristic multi-label taxonomy: Authentication; Authorization/access control; Session management; Input handling; Sensitive-data exposure; Business logic; Mobile application security; Configuration and transport. Unmatched records are marked for manual review.
+- CISA KEV membership is represented as catalog metadata, not a claim that a system you use is affected.
+
+### Network and limitations
+
+All online requests use the shared privacy-aware HTTP client. With the default privacy mode, online requests remain blocked until an explicit HTTP/HTTPS proxy is configured with `AFB_HTTPS_PROXY`. The client does not silently use environment proxy settings. See the privacy section above for DNS and proxy-provider limitations. NVD rate limits and temporary upstream failures may delay imports; retry later rather than repeatedly issuing requests.
 ## Safety
 
 - Discovered assets are inventory records, not authorization.
