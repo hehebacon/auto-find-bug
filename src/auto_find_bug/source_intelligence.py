@@ -131,6 +131,20 @@ def analyze_apk(apk_path: str | Path) -> dict[str, Any]:
                 manifest_status = "text_xml"
             except (UnicodeDecodeError, ET.ParseError):
                 manifest_status = "binary_xml_requires_optional_decoder"
+                try:
+                    from androguard.core.apk import APK
+                    from lxml import etree
+                    decoded = APK(str(path))
+                    manifest_obj = decoded.get_android_manifest_xml()
+                    manifest_text = etree.tostring(manifest_obj, encoding="unicode") if manifest_obj is not None else ""
+                    package = decoded.get_package()
+                    permissions = sorted(set(decoded.get_permissions() or []))
+                    sdk = {"min": decoded.get_min_sdk_version(), "target": decoded.get_target_sdk_version()}
+                    manifest_status = "decoded_with_androguard"
+                except ImportError:
+                    pass
+                except Exception as exc:
+                    manifest_status = "binary_xml_decode_error:" + type(exc).__name__
         dex = [name for name in names if re.fullmatch(r"classes(?:\d+)?\.dex", PurePosixPath(name).name)]
         native = [name for name in names if name.startswith("lib/") and name.endswith(".so")]
         permissions: list[str] = []
@@ -147,7 +161,7 @@ def analyze_apk(apk_path: str | Path) -> dict[str, Any]:
                     sdk = {"min": sdk_node.attrib.get(android + "minSdkVersion"), "target": sdk_node.attrib.get(android + "targetSdkVersion")}
             except ET.ParseError:
                 pass
-        return {"source_type": "apk", "path": str(path), "sha256": _sha256(path), "size_bytes": size, "package": package, "manifest_status": manifest_status, "permissions": permissions, "sdk": sdk, "dex_files": dex, "native_libraries": native, "archive_entry_count": len(infos), "findings": _manifest_findings(manifest_text), "limitations": ["APK is analyzed statically and is never executed.", "Compiled APKs do not contain the original source tree or reliable original source line numbers.", "Binary AndroidManifest.xml decoding is not included in this base build; supply matching source or add an approved Android manifest decoder for deeper metadata."]}
+        return {"source_type": "apk", "path": str(path), "sha256": _sha256(path), "size_bytes": size, "package": package, "manifest_status": manifest_status, "permissions": permissions, "sdk": sdk, "dex_files": dex, "native_libraries": native, "archive_entry_count": len(infos), "findings": _manifest_findings(manifest_text), "limitations": ["APK is analyzed statically and is never executed.", "Compiled APKs do not contain the original source tree or reliable original source line numbers.", "Binary AndroidManifest.xml decoding uses the optional androguard extra; without it, only archive inventory and hashes are available."]}
 
 
 def analyze_source(path: str | Path) -> dict[str, Any]:
