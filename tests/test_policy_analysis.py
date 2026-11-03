@@ -10,6 +10,7 @@ class PolicyAnalysisTests(unittest.TestCase):
         text = """In scope: https://app.example.com
 Out of scope: https://legacy.example.com
 Do not test https://blocked.example.com
+Do not test https://app.example.com
 Testing is permitted for https://app.example.com
 """
         result = analyze_policy_text(text, "https://example.org/policy")
