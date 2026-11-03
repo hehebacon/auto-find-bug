@@ -11,7 +11,6 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 from rich.prompt import Prompt
 
-from .checks import run_metadata_checks
 from .hackerone_scope import fetch_hackerone_public_snapshot, hackerone_handle_from_url
 from .policy import (
     fetch_policy,
@@ -20,6 +19,7 @@ from .policy import (
     validate_program_url,
 )
 from .reports import write_reports
+from .policy_analysis import write_policy_analysis
 from .scope_review import write_scope_review
 from .scope import extract_scope_candidates, normalize_confirmed_assets
 from .workspace import create_workspace
@@ -112,6 +112,7 @@ def run() -> None:
                         json.dumps(snapshot, indent=2) + "\n", encoding="utf-8"
                     )
                     review = write_scope_review(workspace, snapshot)
+                    policy_analysis = write_policy_analysis(workspace, snapshot_policy or snapshot_text, program_url)
                     (workspace / "policy" / "extraction-status.json").write_text(
                         json.dumps({
                             "status": "THIRD_PARTY_SCOPE_SNAPSHOT_IMPORTED",
@@ -199,25 +200,33 @@ def run() -> None:
         console.print(f"Workspace retained for manual policy entry: {workspace}")
         return
 
+    policy_analysis = write_policy_analysis(workspace, policy_text, program_url)
     candidates = extract_scope_candidates(policy_text)
+    excluded_candidates = set(policy_analysis["exclusion_asset_candidates_unverified"])
+    conflicting_candidates = set(policy_analysis["conflicting_asset_candidates"])
+    candidates_for_review = [host for host in candidates if host not in excluded_candidates and host not in conflicting_candidates]
     (workspace / "reconnaissance" / "scope-candidates.json").write_text(
         json.dumps({
             "warning": "Candidates extracted from policy text are not authorization.",
             "candidates": candidates,
+            "excluded_by_policy_keyword_review_unverified": sorted(excluded_candidates),
+            "conflicts_blocked_for_manual_review": sorted(conflicting_candidates),
+            "candidates_offered_for_manual_review": candidates_for_review,
         }, indent=2) + "\n",
         encoding="utf-8",
     )
     console.print(Panel(
         f"Policy source: {program_url}\n"
         f"Extraction method: {extraction_method}\n"
-        f"Domain-like candidates found: {len(candidates)}\n\n"
+        f"Domain-like candidates found: {len(candidates)}\n"
+        f"Candidates held back by exclusion/conflict clues: {len(candidates) - len(candidates_for_review)}\n\n"
         "[yellow]Candidates are unverified. This parser currently extracts domain names only; "
         "mobile apps, IP ranges, source code, and other asset types need separate manual review.[/yellow]\n"
         "Open the live policy and verify each exact hostname yourself.",
         title="MANUAL SCOPE REVIEW",
         border_style="yellow",
     ))
-    if not candidates:
+    if not candidates_for_review:
         console.print(
             "[yellow]No domain candidates found. This does not mean the program has no scope: "
             "its assets may use non-domain types, or the supplied text may omit the scope table. "
@@ -227,7 +236,7 @@ def run() -> None:
 
     choices = questionary.checkbox(
         "Select ONLY hostnames you personally verified as explicitly in scope (space to toggle, enter to continue):",
-        choices=[questionary.Choice(host, value=host) for host in candidates],
+        choices=[questionary.Choice(host, value=host) for host in candidates_for_review],
         use_shortcuts=True,
     ).ask()
     if not choices:
@@ -245,46 +254,30 @@ def run() -> None:
         border_style="cyan",
     ))
     console.print(
-        "Verify the program is active, every exact host is in scope, and one HEAD request "
-        "per host is permitted by the live policy."
+        "Before marking an asset as confirmed, compare its exact identifier with the live "
+        "program policy, exclusions, announcements, and asset-specific rules."
     )
     if not questionary.confirm(
-        "I checked the live policy and confirm every selected host is explicitly in scope; proceed with one HTTPS HEAD request per host?",
+        "I personally verified every selected asset against the current canonical policy and exclusions?",
         default=False,
     ).ask():
-        console.print("[yellow]Confirmation declined. No requests sent.[/yellow]")
-        return
-    if not questionary.confirm(
-        "I understand this is a low-impact metadata check, not an exploit scan, and I will stop if policy prohibits it?",
-        default=False,
-    ).ask():
-        console.print("[yellow]Safety confirmation declined. No requests sent.[/yellow]")
+        console.print("[yellow]Confirmation declined. Assets remain unconfirmed; no checks run.[/yellow]")
         return
 
     _save_scope(workspace, program_url, selected)
-    log(f"Operator-confirmed assets saved: {len(selected)}")
-    log("Starting one-request-per-host HTTPS metadata review; redirects disabled.")
-    try:
-        observations = run_metadata_checks(selected, workspace / "evidence", delay_seconds=1.0)
-    except Exception as exc:
-        log(f"[red]Checks stopped: {type(exc).__name__}[/red]")
-        return
-
-    for item in observations:
-        if "status_code" in item:
-            log(f"{item['asset']}: HTTP {item['status_code']} (metadata only)")
-        else:
-            log(f"{item['asset']}: request failed ({item.get('error', 'unknown error')})")
-
-    write_reports(workspace, selected, observations)
-    log("Evidence metadata and preliminary report saved.")
+    write_reports(workspace, selected, [])
+    log(f"Saved {len(selected)} operator-attested assets for offline review.")
     console.print(Panel(
-        f"Workspace: {workspace}\nHosts checked: {len(observations)}\n"
+        f"Workspace: {workspace}\nAssets recorded: {len(selected)}\n"
+        "Network activity against assets: none\n"
         "Confirmed vulnerabilities: 0\nSeverity: not assigned",
-        title="RUN COMPLETE",
+        title="OFFLINE REVIEW PACK READY",
         border_style="green",
     ))
-    console.print("Review evidence manually. Do not report metadata observations as vulnerabilities.")
+    console.print(
+        "The workspace contains policy analysis, scope review, vulnerability categories, "
+        "and report templates. No target requests or automated vulnerability tests were sent."
+    )
 
 
 def main() -> None:
