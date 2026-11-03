@@ -28,7 +28,7 @@ from .scope import extract_scope_candidates, normalize_confirmed_assets
 from .workspace import create_workspace
 from . import research
 from .research import ResearchError
-from . import code_audit, web_audit, workspace_review
+from . import code_audit, web_audit, workspace_review, source_intelligence
 
 console = Console()
 
@@ -413,12 +413,56 @@ def _triage_command(args: argparse.Namespace) -> int:
         return 2
 
 
+
+def _source_intelligence_command(args: argparse.Namespace) -> int:
+    try:
+        result = source_intelligence.run_analysis(args.path, args.workspace, args.online)
+        console.print(Panel(
+            f"Input type: {result['input_type']}\nFiles scanned: {result['files_scanned']}\n"
+            f"Dependencies: {result['dependency_count']}\nNew review leads: {result['finding_count']}\n"
+            f"Workspace: {result['workspace']}\nReport: {result['report_path']}",
+            title="SOURCE INTELLIGENCE",
+            border_style="cyan",
+        ))
+        console.print(f"Findings: {result['findings_path']}")
+        console.print("[dim]Inputs are analyzed statically and never executed. Online mode queries only the public OSV advisory API; matches require human review.[/dim]")
+        return 0
+    except (ValueError, OSError, RuntimeError) as exc:
+        console.print(f"[red]Source Intelligence failed:[/red] {type(exc).__name__}: {exc}")
+        return 2
+
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="auto-find-bug",
         description="Scope-first Bug Bounty policy review and passive public advisory research.",
     )
     commands = parser.add_subparsers(dest="command")
+
+
+    source_parser = commands.add_parser("source", help="Analyze local source code and dependencies.")
+    source_actions = source_parser.add_subparsers(dest="source_action", required=True)
+    source_scan = source_actions.add_parser("scan", help="Run local static analysis and save findings.")
+    source_scan.add_argument("path", help="Local source file or project directory.")
+    source_scan.add_argument("--workspace", help="Existing workspace to receive normalized findings.")
+    source_scan.add_argument("--online", action="store_true", help="Query OSV for exact dependency versions.")
+    source_dependencies = source_actions.add_parser("dependencies", help="Inventory project dependency lockfiles.")
+    source_dependencies.add_argument("path", help="Local source project directory.")
+    source_dependencies.add_argument("--workspace", help="Existing workspace to receive normalized findings.")
+    source_dependencies.add_argument("--online", action="store_true", help="Query OSV for exact dependency versions.")
+
+    apk_parser = commands.add_parser("apk", help="Statically inspect an APK supplied by its owner or an authorized researcher.")
+    apk_actions = apk_parser.add_subparsers(dest="apk_action", required=True)
+    apk_analyze = apk_actions.add_parser("analyze", help="Inspect APK archive, manifest metadata and component configuration.")
+    apk_analyze.add_argument("path", help="Local .apk file.")
+    apk_analyze.add_argument("--workspace", help="Existing workspace to receive normalized findings.")
+    apk_analyze.add_argument("--online", action="store_true", help="Query OSV for source dependency versions when available.")
+
+    analyze_parser = commands.add_parser("analyze", help="Run Source Intelligence on a local source tree or APK.")
+    analyze_parser.add_argument("path", help="Local source project directory or .apk file.")
+    analyze_parser.add_argument("--workspace", help="Existing workspace to receive normalized findings.")
+    analyze_parser.add_argument("--online", action="store_true", help="Query OSV for exact dependency versions.")
 
     review_parser = commands.add_parser("review-source", help="Import local static-analysis leads into a Bug Bounty workspace.")
     review_parser.add_argument("workspace", help="Existing program workspace directory.")
@@ -475,6 +519,10 @@ def main() -> None:
         return
     parser = build_parser()
     args = parser.parse_args()
+    if args.command in {"source", "apk", "analyze"}:
+        if args.command == "source" and args.source_action == "dependencies":
+            args.online = args.online
+        raise SystemExit(_source_intelligence_command(args))
     if args.command == "research":
         raise SystemExit(_research_command(args))
     if args.command == "review-source":
