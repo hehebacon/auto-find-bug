@@ -60,17 +60,17 @@ _RULES = [
     ("SOL003", "HIGH", "Solidity low-level call", r"\.call\s*(?:\{|\()", "Check return values and reentrancy implications; prefer safer interfaces where possible.", ("Solidity",)),
     ("SOL004", "HIGH", "Solidity selfdestruct", r"\bselfdestruct\s*\(", "Review whether contract destruction is intended and properly access-controlled.", ("Solidity",)),
     ("PAS001", "MEDIUM", "Pascal pointer or untyped memory operation", r"\b(?:GetMem|ReallocMem|Move|FillChar)\s*\(", "Validate buffer sizes and pointer lifetimes around manual memory operations.", ("Pascal",)),
-    ("SQL001", "HIGH", "Potential dynamic SQL construction", r"(?:EXEC(?:UTE)?\s*\(\s*['\"]?\s*\+|\b(?:CONCAT|CONCAT_WS)\s*\([^;]*(?:SELECT|UPDATE|INSERT|DELETE))", "Use parameterized statements and avoid concatenating untrusted values into SQL.", ("SQL",)),
+    ("SQL001", "HIGH", "Potential dynamic SQL construction", r"EXEC(?:UTE)?\s*\([^)]*\+", "Use parameterized statements and avoid concatenating untrusted values into SQL.", ("SQL",)),
     ("SH001", "HIGH", "Shell dynamic evaluation", r"\beval\s+['\"]?\$", "Avoid eval of expanded data; use arrays and explicit argument handling.", ("Shell",)),
     ("SH002", "HIGH", "Piped remote script execution", r"(?:curl|wget)[^\n|]*\|\s*(?:sh|bash)", "Do not pipe remote content directly into a shell; verify and inspect downloads first.", ("Shell",)),
     ("SH003", "MEDIUM", "World-writable permission command", r"\bchmod\s+(?:-R\s+)?777\b", "Grant only the minimum required permissions.", ("Shell",)),
     ("BAT001", "HIGH", "Batch dynamic command expansion", r"\bcall\s+%[^%]+%", "Review CALL with expanded variables; validate values and avoid constructing commands from untrusted input.", ("Batch",)),
     ("BAT002", "MEDIUM", "Batch delayed expansion enabled", r"(?i)\bsetlocal\s+enabledelayedexpansion\b", "Review exclamation-mark expansion where values may contain special characters.", ("Batch",)),
     ("CSS001", "HIGH", "Legacy CSS expression()", r"\bexpression\s*\(", "Remove legacy expression(); use standard CSS properties.", ("CSS",)),
-    ("YAML001", "HIGH", "Potential Python object YAML tag", r"!!python/(?:object|object/new|module|name)", "Do not load untrusted YAML with constructors capable of creating Python objects.", ("YAML",)),
+    ("YAML001", "HIGH", "Potential Python object YAML tag", r"!!python/[A-Za-z_/-]+", "Do not load untrusted YAML with constructors capable of creating Python objects.", ("YAML",)),
     ("XML001", "HIGH", "XML document type declaration", r"<!DOCTYPE", "If parsing untrusted XML, disable external entities and DTD processing.", ("XML",)),
     ("CFG001", "MEDIUM", "Debug mode enabled in configuration", r'(?i)["\']?(?:debug|debug_mode)["\']?\s*:\s*(?:true|1|["\']true["\'])', "Disable debug mode in production and keep detailed errors out of public responses.", ("JSON", "JSONC", "YAML")),
-    ("CFG002", "MEDIUM", "Wildcard CORS configuration", r'(?i)["\']?(?:access-control-allow-origin|allow_origins|cors)["\']?\s*:\s*(?:\*|\[\s*["\']\*["\']\s*\])', "Restrict cross-origin access to the specific trusted origins required by the application.", ("JSON", "JSONC", "YAML")),
+    ("CFG002", "MEDIUM", "Wildcard CORS configuration", r"(?i)(cors|allow_origins|access-control-allow-origin)[^\n]*\*", "Restrict cross-origin access to the specific trusted origins required by the application.", ("JSON", "JSONC", "YAML")),
 ]
 
 
