@@ -140,6 +140,8 @@ def run() -> None:
                     console.print(f"Saved inventory: {workspace / 'policy' / 'scope-inventory.json'}")
                     console.print(f"Scope review: {workspace / 'policy' / 'scope-review.md'}")
                     console.print(f"Vulnerability taxonomy: {workspace / 'reconnaissance' / 'vulnerability-class-checklist.md'}")
+                    console.print(f"Policy analysis: {workspace / 'policy' / 'policy-analysis.md'}")
+                    write_reports(workspace, [], [])
                     console.print(f"Snapshot classification: {review['counts']}")
                     console.print(f"Canonical policy: {program_url}")
                     console.print("Review the live HackerOne policy and exclusions separately before any research.")
@@ -205,6 +207,16 @@ def run() -> None:
     excluded_candidates = set(policy_analysis["exclusion_asset_candidates_unverified"])
     conflicting_candidates = set(policy_analysis["conflicting_asset_candidates"])
     candidates_for_review = [host for host in candidates if host not in excluded_candidates and host not in conflicting_candidates]
+    write_scope_review(workspace, {
+        "program_handle": program_handle,
+        "canonical_policy_url": program_url,
+        "source_url": program_url,
+        "snapshot_publicly_verified_at": None,
+        "assets": [
+            {"asset_identifier": host, "asset_type": "DOMAIN", "submission_eligible": None, "bounty_eligible": None}
+            for host in candidates
+        ],
+    })
     (workspace / "reconnaissance" / "scope-candidates.json").write_text(
         json.dumps({
             "warning": "Candidates extracted from policy text are not authorization.",
@@ -228,9 +240,9 @@ def run() -> None:
     ))
     if not candidates_for_review:
         console.print(
-            "[yellow]No domain candidates found. This does not mean the program has no scope: "
-            "its assets may use non-domain types, or the supplied text may omit the scope table. "
-            "No checks will run.[/yellow]"
+            "[yellow]No domain candidates are available for manual review. They may be absent, "
+            "or held back by exclusion/conflict clues. Other asset types may still exist. "
+            "No target checks will run.[/yellow]"
         )
         return
 
