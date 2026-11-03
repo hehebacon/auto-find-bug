@@ -42,7 +42,7 @@ def _parse_assets(soup: BeautifulSoup) -> list[dict]:
         r"(?m)^[ \t]*([^\n]+?)[ \t]*\n[ \t]*Type:[ \t]*([^\n]+)\n"
         r"[ \t]*Submission eligible:[ \t]*(yes|no)\n"
         r"[ \t]*Bounty eligible:[ \t]*(yes|no)\n"
-        r"[ \t]*Maximum severity:[ \t]*([^\n]+)"
+        r"[ \t]*Maximum severity:[ \t]*([^\n]+)",
         re.IGNORECASE,
     )
     assets: list[dict] = []
