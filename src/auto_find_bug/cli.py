@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import time
 from datetime import datetime
@@ -293,6 +294,11 @@ def run() -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        prog="auto-find-bug",
+        description="Scope-first Bug Bounty policy review assistant.",
+    )
+    parser.parse_args()
     try:
         run()
     except KeyboardInterrupt:
