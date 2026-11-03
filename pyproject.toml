@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "auto-find-bug"
+version = "0.1.0"
+description = "Scope-first Bug Bounty research assistant"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "beautifulsoup4>=4.12",
+  "httpx>=0.27",
+  "questionary>=2.0",
+  "rich>=13.7",
+]
+
+[project.scripts]
+auto-find-bug = "auto_find_bug.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
