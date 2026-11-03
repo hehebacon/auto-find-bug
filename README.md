@@ -99,6 +99,35 @@ auto-find-bug code-audit ./my-project
 auto-find-bug code-audit ./my-project --format json --output reports/code-review.json
 ```
 
+## Workspace source review and finding triage
+
+The policy-import workflow deliberately creates an empty `findings/findings.json`; importing a scope inventory is not vulnerability discovery. To attach local static-analysis review leads to an existing workspace, run:
+
+```bash
+auto-find-bug review-source \
+  ~/Documents/findbug/auto-find-bug/tools/outdata/tiktok/<workspace-timestamp> \
+  /path/to/a-local-source-project
+```
+
+This reads source files from the local path only. It does not contact the program assets or execute the source. New records are assigned stable IDs and begin as `potential`. Existing human triage notes and statuses are preserved when the same finding is seen again. Reports are refreshed at `reports/preliminary-report.md` and `reports/final-report.md`.
+
+Inspect `findings/findings.json` to get each `finding_id`, then record a human disposition:
+
+```bash
+# Keep it open for further review
+auto-find-bug triage <workspace> <finding-id> --status needs_review --note "Reason it needs manual review"
+
+# Record a false positive with rationale
+auto-find-bug triage <workspace> <finding-id> --status false_positive --note "Why this pattern is not a security issue in this context"
+
+# Record independent human validation (requires an evidence file inside workspace/evidence/)
+auto-find-bug triage <workspace> <finding-id> --status validated \
+  --note "Describe the independently reviewed impact and reproduction context" \
+  --evidence-ref evidence/review-notes.md
+```
+
+The tool checks that the evidence reference exists inside the workspace, but does not inspect it or establish exploitability. A `validated` label means only that a human reviewer recorded a decision and evidence reference. It does not guarantee program acceptance or submission eligibility. Keep evidence free of credentials, tokens, personal data, and information belonging to other users.
+
 ## One-page passive web review
 
 The `web-audit` command makes exactly one bounded HTTPS GET request to one supplied page after the operator confirms ownership or explicit permission. It checks response security headers, cookie attributes, insecure form actions, and external scripts without Subresource Integrity. It refuses redirects, non-HTTPS URLs, non-public DNS results, non-standard ports, and HTML bodies over 1 MB. It does not crawl, enumerate endpoints, log in, submit forms, send test payloads, or attempt exploitation. Missing headers are hardening observations, not proof of a vulnerability.
