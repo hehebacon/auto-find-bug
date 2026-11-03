@@ -447,7 +447,7 @@ def build_parser() -> argparse.ArgumentParser:
     source_scan.add_argument("path", help="Local source file or project directory.")
     source_scan.add_argument("--workspace", help="Existing workspace to receive normalized findings.")
     source_scan.add_argument("--online", action="store_true", help="Query OSV for exact dependency versions.")
-    source_dependencies = source_actions.add_parser("dependencies", help="Inventory project dependency lockfiles.")
+    source_dependencies = source_actions.add_parser("dependencies", help="Review source and inventory dependency lockfiles.")
     source_dependencies.add_argument("path", help="Local source project directory.")
     source_dependencies.add_argument("--workspace", help="Existing workspace to receive normalized findings.")
     source_dependencies.add_argument("--online", action="store_true", help="Query OSV for exact dependency versions.")
@@ -520,8 +520,6 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
     if args.command in {"source", "apk", "analyze"}:
-        if args.command == "source" and args.source_action == "dependencies":
-            args.online = args.online
         raise SystemExit(_source_intelligence_command(args))
     if args.command == "research":
         raise SystemExit(_research_command(args))
