@@ -30,16 +30,14 @@ A scope-first Bug Bounty policy review and passive public vulnerability-intellig
 
 HackerOne's official Hacker API documents the structured-scopes endpoint, but API access uses an API username/token. See the official [Hacker API documentation](https://api.hackerone.com/hacker-resources/) and [authentication guide](https://api.hackerone.com/getting-started-hacker-api/).
 
-## Online connection and privacy mode
+## Network behavior
 
-Public policy-page and third-party public-scope HTTP requests use the shared privacy-aware client in `auto_find_bug.network`.
+Online requests use the machine's normal network configuration through HTTPX.
 
-- Privacy mode is enabled by default. Without an explicit `AFB_HTTPS_PROXY`, online HTTP requests are blocked rather than silently sent directly.
-- Configure an HTTP or HTTPS proxy with `AFB_HTTPS_PROXY` in the shell environment before launching the CLI.
-- `AFB_PRIVACY_MODE=0` explicitly disables the fail-closed requirement; use this only when you understand that requests may connect directly.
-- The client ignores ambient proxy environment variables (`trust_env=False`), so only the explicitly configured proxy is used.
-- This is not anonymity protection: the proxy provider can see the connecting IP, and local hostname validation currently performs DNS lookups from the device. DNS metadata may therefore be visible to the configured resolver.
-- No proxy setup can establish authorization or make testing a target permissible.
+- No project-specific IP-hiding, privacy mode, or mandatory proxy is enabled.
+- The client uses HTTPX's standard environment handling, so normal system proxy variables (if configured on the machine) are respected.
+- If no proxy is configured by the operating system or shell, requests connect through the normal network route.
+- Public services may see the public IP address used by the connection. This tool does not provide anonymity or IP masking.
 
 The online feature fetches only the exact public policy URL supplied by the operator and the documented public snapshot URL for supported HackerOne programs. Redirects are refused; no target assets are crawled, probed, or scanned.
 
@@ -68,7 +66,7 @@ auto-find-bug research list --limit 25
 auto-find-bug research list --source "CISA KEV"
 auto-find-bug research list --category "Authorization"
 
-# Inspect database and connection mode without making a network request
+# Inspect database and standard network mode without making a network request
 auto-find-bug research status
 
 # Export a Markdown or JSON digest
@@ -87,7 +85,8 @@ auto-find-bug research export --format json --output reports/public-vulnerabilit
 
 ### Network and limitations
 
-All online requests use the shared privacy-aware HTTP client. With the default privacy mode, online requests remain blocked until an explicit HTTP/HTTPS proxy is configured with `AFB_HTTPS_PROXY`. The client does not silently use environment proxy settings. See the privacy section above for DNS and proxy-provider limitations. NVD rate limits and temporary upstream failures may delay imports; retry later rather than repeatedly issuing requests.
+Online requests use the standard HTTPX client and the machine's normal network configuration. NVD rate limits and temporary upstream failures may delay imports; retry later rather than repeatedly issuing requests.
+
 ## Safety
 
 - Discovered assets are inventory records, not authorization.
