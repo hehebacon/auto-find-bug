@@ -26,15 +26,15 @@ def create_workspace(program_url: str, program_name: str | None = None) -> Path:
         (path / name).mkdir(parents=True, exist_ok=True)
 
     (path / "findings" / "findings.json").write_text(
-        json.dumps({"findings": [], "note": "Scanner leads require manual validation."}, indent=2),
+        json.dumps({"findings": [], "status": "no_validated_findings", "network_activity": "none", "note": "Offline review workspace; no target checks are performed."}, indent=2),
         encoding="utf-8",
     )
     (path / "reports" / "preliminary-report.md").write_text(
-        "# Preliminary Bug Bounty Report\n\nNo findings have been validated yet.\n",
+        "# Offline Bug Bounty Review Pack\n\nNo target checks were performed. No findings have been validated.\n",
         encoding="utf-8",
     )
     (path / "reports" / "final-report.md").write_text(
-        "# Final Bug Bounty Report\n\nPending authorized testing and manual validation.\n",
+        "# Final Bug Bounty Report\n\nPending independent review under the current program policy.\n",
         encoding="utf-8",
     )
     (path / "project.md").write_text(
