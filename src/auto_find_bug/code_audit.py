@@ -46,7 +46,7 @@ _RULES = [
     ("PHP001", "HIGH", "PHP dynamic code execution", r"\b(?:eval|assert)\s*\(", "Remove dynamic code execution and use explicit application logic.", ("PHP",)),
     ("PHP002", "HIGH", "PHP command execution", r"\b(?:shell_exec|system|passthru|exec)\s*\(", "Avoid shell execution; use fixed commands and strict argument handling.", ("PHP",)),
     ("PHP003", "HIGH", "PHP unsafe deserialization", r"\bunserialize\s*\(", "Do not unserialize untrusted input; use JSON and validate its schema.", ("PHP",)),
-    ("WEB001", "MEDIUM", "Potential inline event handler", r"\bon(?:click|error|load|mouseover|submit)\s*=\s*[\\"']", "Use addEventListener and keep executable code out of HTML attributes.", ("HTML",)),
+    ("WEB001", "MEDIUM", "Potential inline event handler", r"\bon(?:click|error|load|mouseover|submit)\s*=", "Use addEventListener and keep executable code out of HTML attributes.", ("HTML",)),
     ("C001", "HIGH", "Potentially unsafe C string copy", r"\b(?:strcpy|strcat|sprintf|gets)\s*\(", "Use bounded operations, validate lengths, and prefer safer APIs; manually verify buffer sizes.", ("C", "C/C++ header", "C++ header", "C++")),
     ("C002", "HIGH", "Native command execution", r"\b(?:system|popen)\s*\(", "Avoid invoking a shell from native code; use safer process APIs and fixed arguments.", ("C", "C/C++ header", "C++ header", "C++")),
     ("CS001", "HIGH", "C# process execution", r"\bProcess\.Start\s*\(", "Review whether arguments can be influenced by untrusted input; avoid shell execution.", ("C#",)),
