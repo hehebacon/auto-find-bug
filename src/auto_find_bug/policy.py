@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import ipaddress
 import re
+import socket
 from urllib.parse import urlparse
 
 import httpx
@@ -11,20 +13,34 @@ USER_AGENT = "auto-find-bug/0.1 (+scope-first policy review)"
 
 
 def validate_program_url(value: str) -> str:
-    parsed = urlparse(value.strip())
+    value = value.strip()
+    parsed = urlparse(value)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise ValueError("Enter a valid http:// or https:// program policy URL.")
-    return value.strip()
+    if parsed.username or parsed.password or parsed.port not in (None, 80, 443):
+        raise ValueError("Credentials and non-standard ports are not accepted.")
+    host = parsed.hostname.rstrip(".").lower()
+    if host == "localhost" or host.endswith(".localhost"):
+        raise ValueError("Localhost policy URLs are not accepted.")
+    try:
+        addresses = {ipaddress.ip_address(item[4][0]) for item in socket.getaddrinfo(host, None)}
+    except (OSError, ValueError):
+        raise ValueError("The policy hostname could not be resolved.") from None
+    if not addresses or any(not address.is_global for address in addresses):
+        raise ValueError("Policy URL must resolve only to public IP addresses.")
+    return value
 
 
 def fetch_policy(url: str) -> tuple[str, str]:
-    """Fetch one public policy page only; do not crawl linked targets."""
+    """Fetch only the supplied public policy page; redirects and linked targets are not followed."""
     with httpx.Client(
-        follow_redirects=True,
+        follow_redirects=False,
         timeout=15.0,
         headers={"User-Agent": USER_AGENT},
     ) as client:
         response = client.get(url)
+        if response.is_redirect:
+            raise ValueError("The policy page redirected. Enter its final canonical URL directly.")
         response.raise_for_status()
         content_type = response.headers.get("content-type", "")
         if "text/html" not in content_type.lower():
