@@ -87,13 +87,37 @@ auto-find-bug research export --format json --output reports/public-vulnerabilit
 
 Online requests use the standard HTTPX client and the machine's normal network configuration. NVD rate limits and temporary upstream failures may delay imports; retry later rather than repeatedly issuing requests.
 
-## Safety
+## Local static source review
+
+The `code-audit` command inspects source files locally using Python AST checks and conservative pattern rules for Python, JavaScript/TypeScript, PHP, and HTML. It skips common dependency/build directories and files larger than 1 MB. It does not execute source code, install dependencies, or make network requests. Findings are heuristic review leads and can be false positives or false negatives.
+
+```bash
+# Review a source tree and write Markdown (default)
+auto-find-bug code-audit ./my-project
+
+# Write machine-readable JSON
+auto-find-bug code-audit ./my-project --format json --output reports/code-review.json
+```
+
+## One-page passive web review
+
+The `web-audit` command makes exactly one bounded HTTPS GET request to one supplied page after the operator confirms ownership or explicit permission. It checks response security headers, cookie attributes, insecure form actions, and external scripts without Subresource Integrity. It refuses redirects, non-HTTPS URLs, non-public DNS results, non-standard ports, and HTML bodies over 1 MB. It does not crawl, enumerate endpoints, log in, submit forms, send test payloads, or attempt exploitation. Missing headers are hardening observations, not proof of a vulnerability.
+
+```bash
+# Only run for a site you own or are explicitly authorized to review
+auto-find-bug web-audit https://your-authorized-site.example/ --confirm-authorized
+
+# JSON output
+auto-find-bug web-audit https://your-authorized-site.example/ --confirm-authorized --format json --output reports/web-review.json
+```
+
+## Safety and interpretation
 
 - Discovered assets are inventory records, not authorization.
-- Do not test assets unless the current canonical policy explicitly permits the exact activity.
-- Do not test accounts, data, or systems belonging to other users.
-- Active target requests are disabled in this build. No target crawling, probing, scanning, authentication, or automated vulnerability checks are performed.
-- The tool does not establish authorization, confirm vulnerabilities, or assign severity.
+- Only review websites you own or are explicitly authorized to assess.
+- The web review is deliberately limited to one read-only page request; it is not an active vulnerability scanner.
+- Never test accounts, data, or systems belonging to other users.
+- Neither static findings nor missing security headers establish exploitability, severity, or a valid Bug Bounty submission.
 
 ## Install
 
