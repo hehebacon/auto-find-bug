@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 
-from .network import PrivacyConfigurationError, create_http_client, privacy_status
+from .network import create_http_client, network_status
 
 NVD_API = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
@@ -182,10 +182,8 @@ def search_nvd(keyword: str, limit: int = 25) -> dict[str, Any]:
             response = client.get(NVD_API, params={"keywordSearch": keyword, "resultsPerPage": limit, "startIndex": 0})
             response.raise_for_status()
             payload = response.json()
-    except PrivacyConfigurationError:
-        raise
     except (httpx.HTTPError, ValueError) as exc:
-        raise ResearchError(f"NVD request failed ({type(exc).__name__}). Check proxy configuration, rate limits, and connectivity.") from exc
+        raise ResearchError(f"NVD request failed ({type(exc).__name__}). Check network connectivity and rate limits.") from exc
 
     records = []
     for wrapper in payload.get("vulnerabilities") or []:
@@ -220,8 +218,6 @@ def sync_cisa_kev() -> dict[str, Any]:
             response = client.get(CISA_KEV_URL)
             response.raise_for_status()
             payload = response.json()
-    except PrivacyConfigurationError:
-        raise
     except (httpx.HTTPError, ValueError) as exc:
         raise ResearchError(f"CISA KEV feed request failed ({type(exc).__name__}).") from exc
 
@@ -274,7 +270,7 @@ def research_status() -> dict[str, Any]:
         total = db.execute("SELECT COUNT(*) FROM advisories").fetchone()[0]
         sources = {row["source"]: row["count"] for row in db.execute("SELECT source, COUNT(*) AS count FROM advisories GROUP BY source")}
         latest = db.execute("SELECT MAX(imported_at) FROM advisories").fetchone()[0]
-    return {"database": str(database_path()), "total_records": total, "by_source": sources, "last_imported_at": latest, "connection": privacy_status()}
+    return {"database": str(database_path()), "total_records": total, "by_source": sources, "last_imported_at": latest, "connection": network_status()}
 
 
 def export_advisories(output: str | Path, fmt: str = "md", limit: int = 200) -> Path:
