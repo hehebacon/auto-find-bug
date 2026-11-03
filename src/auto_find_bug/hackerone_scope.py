@@ -39,10 +39,10 @@ def _require_public_host(host: str) -> None:
 
 def _parse_assets(soup: BeautifulSoup) -> list[dict]:
     asset_pattern = re.compile(
-        r"(?m)^([^\n]+)\nType:\s*([^\n]+)\n"
-        r"Submission eligible:\s*(yes|no)\n"
-        r"Bounty eligible:\s*(yes|no)\n"
-        r"Maximum severity:\s*([^\n]+)",
+        r"(?m)^[ \t]*([^\n]+?)[ \t]*\n[ \t]*Type:[ \t]*([^\n]+)\n"
+        r"[ \t]*Submission eligible:[ \t]*(yes|no)\n"
+        r"[ \t]*Bounty eligible:[ \t]*(yes|no)\n"
+        r"[ \t]*Maximum severity:[ \t]*([^\n]+)"
         re.IGNORECASE,
     )
     assets: list[dict] = []
