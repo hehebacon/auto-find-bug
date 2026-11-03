@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 
-from .network import create_http_client, privacy_status
+from .network import PrivacyConfigurationError, create_http_client, privacy_status
 
 NVD_API = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
