@@ -165,7 +165,7 @@ def _http_client(timeout: float = 25.0) -> httpx.Client:
     return create_http_client(
         timeout=httpx.Timeout(timeout, connect=10.0),
         follow_redirects=False,
-        headers={"User-Agent": "auto-find-bug/0.2.0 (public-advisory-research; contact: project-maintainer)"},
+        headers={"User-Agent": "auto-find-bug/0.2.0 (public advisory research)"},
     )
 
 
