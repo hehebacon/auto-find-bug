@@ -4,7 +4,7 @@ import re
 from urllib.parse import urlparse
 
 DOMAIN_RE = re.compile(r"(?i)(?<![a-z0-9.-])(?:\*\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(?![a-z0-9.-])")
-URL_RE = re.compile(r"https?://[^\s<>()\[\]{}"']+", re.I)
+URL_RE = re.compile(r"""https?://[^\s<>()\[\]{}"']+""", re.I)
 
 
 def extract_scope_candidates(policy_text: str) -> list[str]:
