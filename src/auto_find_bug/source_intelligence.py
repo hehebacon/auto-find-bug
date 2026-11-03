@@ -272,6 +272,8 @@ def run_analysis(input_path: str | Path, workspace_path: str | Path | None = Non
             "advisory_matches": sum(item["advisory_count"] for item in correlation["results"]),
         }
     (workspace / "findings" / "findings.json").write_text(json.dumps(findings, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    from .workspace_review import _write_reports
+    _write_reports(workspace, findings, result)
     report_dir = workspace / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
     lines = [
