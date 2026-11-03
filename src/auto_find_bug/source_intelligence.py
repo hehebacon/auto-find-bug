@@ -154,3 +154,134 @@ def analyze_source(path: str | Path) -> dict[str, Any]:
     result = code_audit.analyze_source(path)
     result["source_type"] = "source_code"
     return result
+
+
+def _merge_findings(workspace: Path, incoming: list[dict[str, Any]]) -> dict[str, Any]:
+    path = workspace / "findings" / "findings.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"Cannot read workspace findings: {exc}") from exc
+        if not isinstance(data, dict) or not isinstance(data.get("findings"), list):
+            raise ValueError("Workspace findings file has an unsupported structure.")
+    else:
+        data = {"findings": []}
+    existing = {item.get("finding_id"): item for item in data["findings"] if item.get("finding_id")}
+    now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+    for raw in incoming:
+        item = dict(raw)
+        identity = "|".join(str(item.get(key, "")) for key in ("rule_id", "file", "line", "component", "evidence", "advisory_id"))
+        item["finding_id"] = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
+        previous = existing.get(item["finding_id"], {})
+        item["status"] = previous.get("status", "potential")
+        item["reviewer_note"] = previous.get("reviewer_note")
+        item["evidence_ref"] = previous.get("evidence_ref")
+        item["first_seen_at"] = previous.get("first_seen_at", now)
+        item["last_seen_at"] = now
+        existing[item["finding_id"]] = item
+    data["findings"] = sorted(existing.values(), key=lambda item: (str(item.get("file", "")), item.get("line") or 0, item.get("rule_id", "")))
+    statuses = [item.get("status", "potential") for item in data["findings"]]
+    data["counts"] = {key: statuses.count(key) for key in ("potential", "needs_review", "validated", "false_positive")}
+    data["counts"]["total"] = len(statuses)
+    data["status"] = "needs_manual_review" if data["counts"]["potential"] or data["counts"]["needs_review"] else "no_open_findings"
+    data["network_activity"] = "public_advisory_api_only" if data.get("online_correlation") else "none"
+    data["updated_at"] = now
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return data
+
+
+def run_analysis(input_path: str | Path, workspace_path: str | Path | None = None, online: bool = False) -> dict[str, Any]:
+    from datetime import datetime, timezone
+    from .online_intelligence import correlate_dependencies
+
+    source = Path(input_path).expanduser().resolve()
+    if not source.exists():
+        raise ValueError(f"Input path does not exist: {source}")
+    if source.is_file() and source.suffix.lower() == ".apk":
+        result = analyze_apk(source)
+        dependencies = {"root": str(source.parent), "manifests": [], "dependency_count": 0, "dependencies": []}
+        incoming = [dict(item, source_type="apk") for item in result["findings"]]
+    else:
+        result = analyze_source(source)
+        dependencies = discover_dependencies(source)
+        incoming = [dict(item, source_type="source_code") for item in result["findings"]]
+    correlation = None
+    if online:
+        correlation = correlate_dependencies(dependencies["dependencies"])
+        for match in correlation["results"]:
+            for advisory in match["advisories"]:
+                incoming.append({
+                    "rule_id": "DEP-OSV-001", "severity": "UNKNOWN",
+                    "title": f"Public OSV advisory match: {advisory['id']}",
+                    "file": ", ".join(match["manifests"]), "line": None,
+                    "component": f"{match['ecosystem']}:{match['name']}@{match['version']}",
+                    "evidence": f"Exact package version matched OSV record {advisory['id']}",
+                    "recommendation": "Review the advisory's affected ranges and applicability; update to a fixed version when appropriate.",
+                    "confidence": "medium", "source_type": "dependency_advisory",
+                    "advisory_id": advisory["id"], "advisory_url": advisory["url"],
+                    "advisory_source": correlation["source"],
+                })
+    if workspace_path:
+        workspace = Path(workspace_path).expanduser().resolve()
+        if not workspace.is_dir():
+            raise ValueError(f"Workspace directory does not exist: {workspace}")
+    else:
+        workspace = Path("tools/outdata/source-intelligence").resolve() / datetime.now().strftime("%Y%m%d-%H%M%S")
+        workspace.mkdir(parents=True, exist_ok=True)
+    si = workspace / "source-intelligence"
+    si.mkdir(parents=True, exist_ok=True)
+    (si / "analysis.json").write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    (si / "dependency-inventory.json").write_text(json.dumps(dependencies, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    if correlation is not None:
+        online_dir = workspace / "online-intelligence"
+        online_dir.mkdir(parents=True, exist_ok=True)
+        (online_dir / "osv-correlation.json").write_text(json.dumps(correlation, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    findings = _merge_findings(workspace, incoming)
+    findings["source_intelligence"] = {
+        "input": str(source), "analysis": "source-intelligence/analysis.json",
+        "dependency_inventory": "source-intelligence/dependency-inventory.json",
+        "online_correlation": bool(online),
+    }
+    if correlation is not None:
+        findings["online_correlation"] = {
+            "source": correlation["source"], "queried": correlation["queried"],
+            "advisory_matches": sum(item["advisory_count"] for item in correlation["results"]),
+        }
+    (workspace / "findings" / "findings.json").write_text(json.dumps(findings, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    report_dir = workspace / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Source Intelligence Report", "",
+        f"- Input: {source}", f"- Input type: {result.get('source_type', 'source_code')}",
+        f"- New review leads: {len(incoming)}", f"- Dependencies inventoried: {dependencies['dependency_count']}",
+        f"- Online OSV correlation: {'enabled' if online else 'disabled'}", "",
+        "## Findings", "",
+    ]
+    if not incoming:
+        lines.append("No review leads were emitted by the enabled checks.")
+    for item in incoming:
+        location = f"{item.get('file')}:{item.get('line')}" if item.get("line") else f"{item.get('file')} / {item.get('component', 'component')}"
+        lines.extend([
+            f"### {item.get('rule_id')} — {item.get('title')}", "",
+            f"- Severity: {item.get('severity')}", f"- Location: {location}",
+            f"- Evidence: {item.get('evidence')}", f"- Confidence: {item.get('confidence')}",
+            f"- Recommendation: {item.get('recommendation')}",
+            f"- Advisory: {item.get('advisory_url', 'Not applicable')}", "",
+        ])
+    lines.extend(["## Limitations", ""])
+    lines.extend(result.get("limitations", []))
+    lines.extend([
+        "Static-analysis findings and advisory matches are review leads, not proof of exploitability.",
+        "Source/APK inputs are not executed. Online mode contacts only the public OSV advisory API, not application targets.",
+    ])
+    (report_dir / "source-intelligence-report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return {
+        "workspace": str(workspace), "input": str(source), "input_type": result.get("source_type", "source_code"),
+        "files_scanned": result.get("files_scanned", 0), "finding_count": len(incoming),
+        "dependency_count": dependencies["dependency_count"], "online": online,
+        "findings_path": str(workspace / "findings" / "findings.json"),
+        "report_path": str(report_dir / "source-intelligence-report.md"),
+        "analysis_path": str(si / "analysis.json"),
+    }
