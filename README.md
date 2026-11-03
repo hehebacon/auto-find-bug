@@ -18,6 +18,9 @@ A scope-first Bug Bounty policy review assistant.
 - Separate scope exclusions may be absent.
 - "Submission eligible" and "bounty eligible" are metadata fields, not permission to test.
 - The importer does not run network checks against imported assets. It only saves a local inventory.
+- HackerOne workspaces are grouped under `tools/outdata/<program-handle>/<timestamp>/`.
+- The offline scope review groups assets by type and snapshot eligibility; it does not expand wildcards or probe hosts.
+- A high-level vulnerability-class checklist is generated for policy review and learning; it does not scan for or confirm vulnerabilities.
 - Always verify the live HackerOne policy, exact scope, exclusions, and program status independently.
 
 HackerOne's official Hacker API documents the structured-scopes endpoint, but API access uses an API username/token. See the official [Hacker API documentation](https://api.hackerone.com/hacker-resources/) and [authentication guide](https://api.hackerone.com/getting-started-hacker-api/).
