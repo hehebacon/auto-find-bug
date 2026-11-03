@@ -140,6 +140,24 @@ auto-find-bug web-audit https://your-authorized-site.example/ --confirm-authoriz
 auto-find-bug web-audit https://your-authorized-site.example/ --confirm-authorized --format json --output reports/web-review.json
 ```
 
+## Source Intelligence
+
+Version 0.5.0 adds local source and APK inventory, dependency lockfile parsing, optional OSV public advisory correlation, and normalized finding records.
+
+Commands:
+
+```bash
+auto-find-bug source scan ./project
+auto-find-bug source scan ./project --online
+auto-find-bug source dependencies ./project
+auto-find-bug apk analyze ./application.apk
+auto-find-bug analyze ./project --workspace ./existing-workspace --online
+```
+
+Source checks reuse the existing local analyzer. Dependency correlation sends only exact package versions from supported lockfiles to the public OSV API. APK analysis validates and inventories the local archive, records its hash, manifest metadata when readable, declared permissions, DEX names, and native library paths. Text-XML manifests receive configuration checks. Binary Android manifests are inventoried but not decoded in this base build; provide a decoded manifest or matching source for component-level analysis. Compiled APKs do not contain the original source tree, so the tool does not claim to recover original source lines.
+
+Results are saved under source-intelligence/, online-intelligence/, findings/findings.json, and reports/source-intelligence-report.md. New records start as potential; existing reviewer notes and triage statuses are preserved. Static findings and public advisory matches require human review and do not establish impact or applicability.
+
 ## Safety and interpretation
 
 - Discovered assets are inventory records, not authorization.
