@@ -17,13 +17,12 @@ def slugify(value: str) -> str:
     return (value or "bug-bounty-program")[:72].lower()
 
 
-def create_workspace(program_url: str) -> Path:
+def create_workspace(program_url: str, program_name: str | None = None) -> Path:
     host = urlparse(program_url).hostname or "program"
+    label = slugify(program_name or host)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    path = OUTDATA / f"{slugify(host)}-{stamp}"
-    for name in (
-        "policy", "reconnaissance", "findings", "evidence", "logs", "reports"
-    ):
+    path = OUTDATA / label / stamp
+    for name in ("policy", "reconnaissance", "findings", "evidence", "logs", "reports"):
         (path / name).mkdir(parents=True, exist_ok=True)
 
     (path / "findings" / "findings.json").write_text(
@@ -39,7 +38,8 @@ def create_workspace(program_url: str) -> Path:
         encoding="utf-8",
     )
     (path / "project.md").write_text(
-        f"# Program workspace\n\n- Program URL: {program_url}\n- Policy host: {host}\n- Scope status: pending manual verification\n",
+        f"# Program workspace\n\n- Program: {label}\n- Program URL: {program_url}\n"
+        f"- Policy host: {host}\n- Scope status: pending manual verification\n",
         encoding="utf-8",
     )
     (path / "policy" / "scope.json").write_text(
@@ -47,7 +47,8 @@ def create_workspace(program_url: str) -> Path:
         encoding="utf-8",
     )
     (path / "policy" / "scope-review.md").write_text(
-        "# Scope review\n\nReview the live policy. Add only assets explicitly listed as in scope. Record exclusions, wildcard rules, rate limits, prohibited tests, and disclosure requirements.\n",
+        "# Scope review\n\nReview the live policy. Add only assets explicitly listed as in scope. "
+        "Record exclusions, wildcard rules, rate limits, prohibited tests, and disclosure requirements.\n",
         encoding="utf-8",
     )
     return path
