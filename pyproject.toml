@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "auto-find-bug"
-version = "0.4.0"
+version = "0.5.0"
 description = "Scope-first Bug Bounty assistant with static source and passive web review"
 readme = "README.md"
 requires-python = ">=3.11"
