@@ -12,7 +12,12 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeEl
 from rich.prompt import Prompt
 
 from .checks import run_metadata_checks
-from .policy import fetch_policy, validate_program_url
+from .policy import (
+    fetch_policy,
+    load_manual_policy_text,
+    policy_extraction_incomplete,
+    validate_program_url,
+)
 from .reports import write_reports
 from .scope import extract_scope_candidates, normalize_confirmed_assets
 from .workspace import create_workspace
@@ -80,11 +85,57 @@ def run() -> None:
         with console.status("[cyan]Fetching the supplied public policy page..."):
             html, policy_text = fetch_policy(program_url)
         (workspace / "policy" / "policy-source.html").write_text(html, encoding="utf-8")
+
+        extraction_method = "page_html"
+        if policy_extraction_incomplete(policy_text):
+            console.print(Panel(
+                "The page returned only a short HTML shell/title. This commonly happens when "
+                "the policy content is rendered by JavaScript. The tool will NOT guess assets "
+                "or silently treat the page title as a policy.",
+                title="POLICY_EXTRACTION_INCOMPLETE",
+                border_style="yellow",
+            ))
+            manual_path = Prompt.ask(
+                "Path to a text file containing the policy copied from the browser (Enter to stop)",
+                default="",
+            ).strip()
+            if not manual_path:
+                (workspace / "policy" / "policy-text.md").write_text(
+                    "# Extracted policy text\n\nSource: " + program_url + "\n\n" + policy_text + "\n",
+                    encoding="utf-8",
+                )
+                (workspace / "policy" / "extraction-status.json").write_text(
+                    json.dumps({
+                        "status": "POLICY_EXTRACTION_INCOMPLETE",
+                        "method": extraction_method,
+                        "text_length": len(policy_text),
+                        "manual_import_requested": False,
+                    }, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+                console.print(f"[yellow]Stopped safely. Review or manually import policy text at: {workspace / 'policy'}[/yellow]")
+                return
+            try:
+                policy_text = load_manual_policy_text(manual_path)
+            except ValueError as exc:
+                console.print(f"[red]Manual policy import failed:[/red] {exc}")
+                return
+            extraction_method = "operator_supplied_text_file"
+
         (workspace / "policy" / "policy-text.md").write_text(
-            "# Extracted policy text\n\nSource: " + program_url + "\n\n" + policy_text + "\n",
+            "# Policy text for manual review\n\nSource: " + program_url + "\n\n" + policy_text + "\n",
             encoding="utf-8",
         )
-        log("Policy snapshot saved.")
+        (workspace / "policy" / "extraction-status.json").write_text(
+            json.dumps({
+                "status": "TEXT_AVAILABLE_FOR_MANUAL_REVIEW",
+                "method": extraction_method,
+                "text_length": len(policy_text),
+                "note": "Text extraction does not establish authorization; verify the live policy manually.",
+            }, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        log("Policy text snapshot saved.")
     except Exception as exc:
         log(f"[red]Could not fetch policy page: {type(exc).__name__}[/red]")
         console.print(f"Workspace retained for manual policy entry: {workspace}")
@@ -93,22 +144,27 @@ def run() -> None:
     candidates = extract_scope_candidates(policy_text)
     (workspace / "reconnaissance" / "scope-candidates.json").write_text(
         json.dumps({
-            "warning": "Candidates extracted from page text are not authorization.",
+            "warning": "Candidates extracted from policy text are not authorization.",
             "candidates": candidates,
         }, indent=2) + "\n",
         encoding="utf-8",
     )
     console.print(Panel(
-        f"Policy captured: {program_url}\n"
+        f"Policy source: {program_url}\n"
+        f"Extraction method: {extraction_method}\n"
         f"Domain-like candidates found: {len(candidates)}\n\n"
-        "[yellow]Candidates are unverified. The parser cannot reliably understand exclusions, "
-        "wildcard semantics, program status, or policy exceptions.[/yellow]\n"
+        "[yellow]Candidates are unverified. This parser currently extracts domain names only; "
+        "mobile apps, IP ranges, source code, and other asset types need separate manual review.[/yellow]\n"
         "Open the live policy and verify each exact hostname yourself.",
         title="MANUAL SCOPE REVIEW",
         border_style="yellow",
     ))
     if not candidates:
-        console.print(f"No domain candidates found. Review {workspace / 'policy' / 'policy-text.md'} manually.")
+        console.print(
+            "[yellow]No domain candidates found. This does not mean the program has no scope: "
+            "its assets may use non-domain types, or the supplied text may omit the scope table. "
+            "No checks will run.[/yellow]"
+        )
         return
 
     choices = questionary.checkbox(
