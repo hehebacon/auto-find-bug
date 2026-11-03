@@ -351,7 +351,7 @@ def _code_audit_command(args: argparse.Namespace) -> int:
         result = code_audit.analyze_source(args.path)
         output = code_audit.write_code_report(result, args.output, args.format)
         console.print(Panel(
-            f"Files scanned: {result['files_scanned']}\nFindings: {result['finding_count']}\nReport: {output}",
+            f"Files scanned: {result['files_scanned']}\nLanguages/formats: {result.get('language_count', 0)}\nFindings: {result['finding_count']}\nReport: {output}",
             title="LOCAL STATIC SOURCE REVIEW",
             border_style="cyan",
         ))
