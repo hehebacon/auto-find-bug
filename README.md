@@ -89,7 +89,7 @@ Online requests use the standard HTTPX client and the machine's normal network c
 
 ## Local static source review
 
-The `code-audit` command inspects source files locally using Python AST checks and conservative pattern rules for Python, JavaScript/TypeScript, PHP, and HTML. It skips common dependency/build directories and files larger than 1 MB. It does not execute source code, install dependencies, or make network requests. Findings are heuristic review leads and can be false positives or false negatives.
+The `code-audit` command inspects source files locally across 20+ language and configuration formats: C, C++, C#, Java, Python, JavaScript, TypeScript, Rust, Solidity, Pascal, PHP, HTML, CSS, SQL, Shell, Batch, JSON, JSONC, YAML, and XML (plus common header/module extensions). It uses Python AST checks, JSON/XML syntax validation, and language-specific heuristic rules. It skips common dependency/build directories and files larger than 1 MB. It does not execute source, install dependencies, or make network requests. Coverage is not equivalent to a full compiler-aware SAST engine; findings can be false positives or false negatives.
 
 ```bash
 # Review a source tree and write Markdown (default)
