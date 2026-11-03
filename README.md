@@ -180,4 +180,4 @@ Each run creates a separate workspace under `tools/outdata/<program-handle>/<tim
 
 ## Status
 
-Implemented: policy extraction/manual import, read-only HackerOne public-scope snapshot import, heuristic inclusion/exclusion analysis, conflict blocking, asset classification, offline review packs, and report templates. Automated vulnerability discovery is intentionally not part of this build. Policy completeness and authorization always require human review.
+Implemented: policy extraction/manual import, read-only HackerOne public-scope snapshot import, heuristic policy analysis, local static source review, APK archive inventory and text-manifest checks, dependency lockfile inventory, OSV advisory correlation for exact versions, workspace finding integration, and human triage. The tool does not perform active target checks or claim to discover unknown vulnerabilities. Policy completeness, authorization, and finding validation require human review.
