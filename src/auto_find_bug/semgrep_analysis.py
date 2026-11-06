@@ -98,11 +98,12 @@ def analyze_with_semgrep(path: str | Path) -> dict[str, Any]:
         if isinstance(cwe, list):
             cwe = ", ".join(str(item) for item in cwe)
         check_id = str(match.get("check_id") or "SEMGREP-UNKNOWN")
+        # Semgrep prefixes rule IDs with the local config path. Strip only
+        # that packaging prefix while retaining the full language/rule ID.
+        stable_rule_id = check_id.split(".rules.", 1)[-1]
         message = str(extra.get("message") or "Static taint-analysis candidate")
         findings.append({
-            # Keep the full ID: truncating it to the last segment caused
-            # collisions between languages and rule families.
-            "rule_id": check_id,
+            "rule_id": stable_rule_id,
             "engine_rule_id": check_id,
             "severity": severity,
             "title": message.splitlines()[0][:220],
