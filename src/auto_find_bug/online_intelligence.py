@@ -11,7 +11,7 @@ from .network import create_http_client
 
 OSV_BATCH_URL = "https://api.osv.dev/v1/querybatch"
 MAX_BATCH = 50
-USER_AGENT = "auto-find-bug/0.8.1 (public advisory correlation)"
+USER_AGENT = "auto-find-bug/0.8.2 (public advisory correlation)"
 
 
 def _advisory_record(advisory: dict[str, Any]) -> dict[str, Any]:
