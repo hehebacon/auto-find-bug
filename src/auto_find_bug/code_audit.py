@@ -134,7 +134,7 @@ def analyze_source(root: str | Path) -> dict:
         raise ValueError("Provide an existing source file or directory.")
     files = [base] if base.is_file() else [
         item for item in base.rglob("*")
-        if item.is_file() and item.suffix.lower() in EXTENSIONS
+        if not item.is_symlink() and item.is_file() and item.suffix.lower() in EXTENSIONS
         and not any(part in SKIP_DIRS for part in item.parts)
     ]
     findings: list[Finding] = []
