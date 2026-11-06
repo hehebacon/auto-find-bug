@@ -41,8 +41,21 @@ class SemgrepAnalysisTests(unittest.TestCase):
         self.assertEqual(finding["file"], "app.py")
         self.assertEqual(finding["line"], 12)
         self.assertEqual(finding["cwe"], "CWE-89")
+        self.assertEqual(finding["rule_id"], "auto-find-bug.python.request-to-sql")
         self.assertEqual(finding["validation_status"], "not_validated")
 
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_reports_tool_diagnostics_instead_of_silently_claiming_clean_scan(self):
+        payload = {"paths": {"scanned": ["a.py"]}, "results": [], "errors": [{"message": "rule parse warning"}]}
+        completed = SimpleNamespace(stdout=json.dumps(payload), returncode=2)
+        with patch.object(semgrep_analysis.shutil, "which", return_value="/usr/bin/semgrep"), patch.object(
+            semgrep_analysis.subprocess, "run", return_value=completed
+        ):
+            result = semgrep_analysis.analyze_with_semgrep(Path(__file__))
+        self.assertEqual(result["files_analyzed"], 1)
+        self.assertEqual(result["exit_code"], 2)
+        self.assertIn("rule parse warning", result["diagnostics"][0])
+        self.assertIn("diagnostic", result["note"])
