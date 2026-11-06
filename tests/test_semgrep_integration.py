@@ -24,7 +24,7 @@ class SemgrepIntegrationTests(unittest.TestCase):
         self.assertGreaterEqual(result["files_analyzed"], 1)
         self.assertTrue(
             any(item["rule_id"] == "auto-find-bug.python.request-to-shell" for item in result["findings"]),
-            msg=f"Expected bundled rule did not match. Diagnostics: {result['diagnostics']}; note: {result['note']}",
+            msg=f"Expected bundled rule did not match. Full result: {result}",
         )
 
 
