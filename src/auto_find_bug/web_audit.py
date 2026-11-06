@@ -67,8 +67,7 @@ def _access_gate_signals(headers: dict, body: str, status_code: int) -> tuple[li
             signals.append("challenge_page_marker:" + marker)
 
     bot_detected = any(
-        item.startswith("protection_header:")
-        or item.startswith("challenge_page_marker:")
+        item.startswith("challenge_page_marker:")
         or item == "cloudflare_challenge_header"
         for item in signals
     )
