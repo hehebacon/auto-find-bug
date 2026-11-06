@@ -381,6 +381,17 @@ def run_analysis(input_path: str | Path, workspace_path: str | Path | None = Non
         f"- Semgrep review leads: {result.get('flow_analysis', {}).get('semgrep', {}).get('finding_count', 0)}", "",
         "## Findings", "",
     ]
+    if result.get("dex_analysis"):
+        dex = result["dex_analysis"]
+        lines.extend([
+            "## APK DEX analysis", "",
+            f"- Status: {dex.get('status')}",
+            f"- Classes: {dex.get('class_count')}",
+            f"- Methods: {dex.get('method_count')}",
+            f"- Call graph edges: {dex.get('call_graph_edges')}",
+            f"- Call graph sample entries: {len(dex.get('call_graph_sample', []))}",
+            f"- Note: {dex.get('note', 'Method-level metadata is not original source code.')}", "",
+        ])
     if not incoming:
         lines.append("No review leads were emitted by the enabled checks.")
     for item in incoming:
