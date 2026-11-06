@@ -87,6 +87,12 @@ class OSVCorrelationTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "OSV public advisory query failed"):
                 correlate_dependencies([dependency()])
 
+    def test_malformed_advisory_record_fails_closed(self):
+        client = self._client({"results": [{"vulns": ["not-an-advisory-object"]}]})
+        with patch("auto_find_bug.online_intelligence.create_http_client", return_value=client):
+            with self.assertRaisesRegex(RuntimeError, "malformed advisory record"):
+                correlate_dependencies([dependency()])
+
 
 if __name__ == "__main__":
     unittest.main()
