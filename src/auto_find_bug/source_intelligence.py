@@ -211,6 +211,7 @@ def _merge_findings(workspace: Path, incoming: list[dict[str, Any]]) -> dict[str
             item.setdefault("root_cause", context[1])
             item.setdefault("potential_impact", context[2])
             item.setdefault("confirmation_conditions", context[3])
+        raw.update(item)
         identity = "|".join(str(item.get(key, "")) for key in ("rule_id", "file", "line", "component", "evidence", "advisory_id"))
         item["finding_id"] = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
         previous = existing.get(item["finding_id"], {})
