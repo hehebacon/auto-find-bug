@@ -101,6 +101,49 @@ def _manifest_findings(xml_text: str) -> list[dict[str, Any]]:
     return findings
 
 
+def _analyze_apk_dex(path: Path, dex_names: list[str], dex_bytes: int) -> dict[str, Any]:
+    if not dex_names:
+        return {"status": "no_dex", "class_count": 0, "method_count": 0, "call_graph_edges": 0, "call_graph_sample": []}
+    if dex_bytes > 64 * 1024 * 1024:
+        return {"status": "skipped_size_limit", "class_count": None, "method_count": None, "call_graph_edges": None, "call_graph_sample": []}
+    try:
+        from androguard.misc import AnalyzeAPK
+    except ImportError:
+        return {"status": "optional_androguard_not_installed", "class_count": None, "method_count": None, "call_graph_edges": None, "call_graph_sample": []}
+    try:
+        _apk, _dex_objects, analysis = AnalyzeAPK(str(path))
+        classes = list(analysis.get_classes())
+        methods = list(analysis.get_methods())
+        summary = {
+            "status": "analyzed",
+            "class_count": len(classes),
+            "method_count": len(methods),
+            "call_graph_edges": None,
+            "call_graph_sample": [],
+            "note": "DEX symbols and cross-reference graph are metadata, not original source code or original line numbers.",
+        }
+        if len(methods) > 15000:
+            summary["status"] = "analyzed_call_graph_skipped_method_limit"
+            return summary
+        graph = analysis.get_call_graph(no_isolated=True)
+        edges = list(graph.edges(data=True))
+        summary["call_graph_edges"] = len(edges)
+        summary["call_graph_sample"] = [
+            {"caller": str(source)[:240], "callee": str(target)[:240], "offset": attributes.get("offset")}
+            for source, target, attributes in edges[:100]
+        ]
+        return summary
+    except Exception as exc:
+        return {
+            "status": "dex_analysis_error",
+            "class_count": None,
+            "method_count": None,
+            "call_graph_edges": None,
+            "call_graph_sample": [],
+            "note": type(exc).__name__,
+        }
+
+
 def analyze_apk(apk_path: str | Path) -> dict[str, Any]:
     path = Path(apk_path).expanduser().resolve()
     if not path.is_file() or path.suffix.lower() != ".apk":
@@ -149,6 +192,7 @@ def analyze_apk(apk_path: str | Path) -> dict[str, Any]:
                 except Exception as exc:
                     manifest_status = "binary_xml_decode_error:" + type(exc).__name__
         dex = [name for name in names if re.fullmatch(r"classes(?:\d+)?\.dex", PurePosixPath(name).name)]
+        dex_bytes = sum(item.file_size for item in infos if item.filename in dex)
         native = [name for name in names if name.startswith("lib/") and name.endswith(".so")]
         if manifest_text:
             try:
@@ -161,7 +205,8 @@ def analyze_apk(apk_path: str | Path) -> dict[str, Any]:
                     sdk = {"min": sdk_node.attrib.get(android + "minSdkVersion"), "target": sdk_node.attrib.get(android + "targetSdkVersion")}
             except ET.ParseError:
                 pass
-        return {"source_type": "apk", "path": str(path), "sha256": _sha256(path), "size_bytes": size, "package": package, "manifest_status": manifest_status, "permissions": permissions, "sdk": sdk, "dex_files": dex, "native_libraries": native, "archive_entry_count": len(infos), "findings": _manifest_findings(manifest_text), "limitations": ["APK is analyzed statically and is never executed.", "Compiled APKs do not contain the original source tree or reliable original source line numbers.", "Binary AndroidManifest.xml decoding uses the optional androguard extra; without it, only archive inventory and hashes are available."]}
+        dex_analysis = _analyze_apk_dex(path, dex, dex_bytes)
+        return {"source_type": "apk", "path": str(path), "sha256": _sha256(path), "size_bytes": size, "package": package, "manifest_status": manifest_status, "permissions": permissions, "sdk": sdk, "dex_files": dex, "dex_analysis": dex_analysis, "native_libraries": native, "archive_entry_count": len(infos), "findings": _manifest_findings(manifest_text), "limitations": ["APK is analyzed statically and is never executed.", "DEX analysis can inventory class/method symbols and call references, but cannot reliably recover original source code or original source line numbers.", "DEX call-graph analysis is skipped when the total DEX payload exceeds 64 MiB or the method count exceeds 15,000.", "Binary AndroidManifest.xml decoding and DEX cross-reference analysis use the optional androguard extra."]}
 
 
 def analyze_source(path: str | Path) -> dict[str, Any]:
