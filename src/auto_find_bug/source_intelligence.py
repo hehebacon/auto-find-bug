@@ -211,15 +211,16 @@ def _merge_findings(workspace: Path, incoming: list[dict[str, Any]]) -> dict[str
             item.setdefault("root_cause", context[1])
             item.setdefault("potential_impact", context[2])
             item.setdefault("confirmation_conditions", context[3])
-        raw.update(item)
         identity = "|".join(str(item.get(key, "")) for key in ("rule_id", "file", "line", "component", "evidence", "advisory_id"))
         item["finding_id"] = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
         previous = existing.get(item["finding_id"], {})
         item["status"] = previous.get("status", "potential")
+        item["validation_status"] = "human_review_recorded" if item["status"] == "validated" else "not_validated"
         item["reviewer_note"] = previous.get("reviewer_note")
         item["evidence_ref"] = previous.get("evidence_ref")
         item["first_seen_at"] = previous.get("first_seen_at", now)
         item["last_seen_at"] = now
+        raw.update(item)
         existing[item["finding_id"]] = item
     data["findings"] = sorted(existing.values(), key=lambda item: (str(item.get("file", "")), item.get("line") or 0, item.get("rule_id", "")))
     statuses = [item.get("status", "potential") for item in data["findings"]]
