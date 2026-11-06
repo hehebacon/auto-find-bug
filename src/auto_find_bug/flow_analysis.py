@@ -168,7 +168,7 @@ class FlowVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def _route_guard_findings(source: str, relative: str) -> list[dict]:
+def _route_guard_findings(source: str, relative: str, project_auth_context: list[str] | None = None) -> list[dict]:
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -179,6 +179,10 @@ def _route_guard_findings(source: str, relative: str) -> list[dict]:
     guards = ("login_required", "auth_required", "permission_required", "roles_required",
               "jwt_required", "is_authenticated", "current_user", "authorize", "require_auth",
               "Depends", "permission_classes", "IsAuthenticated")
+    function_nodes = {
+        item.name: item for item in ast.walk(tree)
+        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
@@ -192,6 +196,37 @@ def _route_guard_findings(source: str, relative: str) -> list[dict]:
         body_text = (ast.get_source_segment(source, node) or "") + " " + " ".join(decorators)
         if any(marker.lower() in body_text.lower() for marker in guards):
             continue
+
+        # Resolve direct same-file helper calls conservatively. This is not a
+        # complete call graph: aliases, dynamic dispatch and cross-file calls
+        # are deliberately left unresolved.
+        reachable = set()
+        queue = []
+        for child in ast.walk(node):
+            if isinstance(child, ast.Call):
+                called = FlowVisitor._dotted(child.func).rsplit(".", 1)[-1]
+                if called in function_nodes and called != node.name:
+                    queue.append(called)
+        while queue and len(reachable) < 64:
+            called = queue.pop(0)
+            if called in reachable:
+                continue
+            reachable.add(called)
+            helper = function_nodes[called]
+            for child in ast.walk(helper):
+                if isinstance(child, ast.Call):
+                    next_name = FlowVisitor._dotted(child.func).rsplit(".", 1)[-1]
+                    if next_name in function_nodes and next_name not in reachable:
+                        queue.append(next_name)
+        helper_guard = []
+        for helper_name in sorted(reachable):
+            helper = function_nodes[helper_name]
+            helper_text = (ast.get_source_segment(source, helper) or "").lower()
+            if any(marker.lower() in helper_name.lower() or marker.lower() in helper_text for marker in guards):
+                helper_guard.append(helper_name)
+        if helper_guard:
+            continue
+
         line = node.lineno
         evidence = lines[line - 1].strip()[:220] if 0 < line <= len(lines) else node.name
         results.append({
@@ -200,6 +235,8 @@ def _route_guard_findings(source: str, relative: str) -> list[dict]:
             "file": relative, "line": line, "evidence": evidence,
             "recommendation": "Trace the complete authorization path, including middleware, router dependencies, decorators, and service-layer checks. Add explicit object- and role-level authorization where required.",
             "confidence": "low",
+            "project_auth_context": project_auth_context or [],
+            "call_graph_review": {"same_file_helpers_checked": sorted(reachable), "recognized_guard_helpers": helper_guard, "cross_file_resolution": False},
             "flow": {"source": "route declaration", "source_line": line,
                      "sink": "sensitive route handler", "sink_line": line,
                      "function": node.name, "trace": [f"{relative}:{line} route {node.name}", "No recognized in-function guard token found"]},
@@ -219,6 +256,24 @@ def analyze_python_flows(root: str | Path) -> dict:
     ]
     all_findings = []
     scanned = 0
+    project_auth_context: set[str] = set()
+    context_patterns = {
+        "django_middleware": ("MIDDLEWARE", "AuthenticationMiddleware", "LoginRequiredMiddleware"),
+        "flask_request_middleware": ("before_request", "before_app_request"),
+        "fastapi_middleware_or_dependencies": ("add_middleware", "Depends(", "Security("),
+        "express_or_router_middleware": ("app.use(", "router.use(", "requireAuth", "authMiddleware"),
+        "authorization_policy": ("permission_classes", "IsAuthenticated", "permission_required", "roles_required"),
+    }
+    for candidate in files:
+        try:
+            if candidate.stat().st_size > 1_000_000:
+                continue
+            candidate_text = candidate.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for label, markers in context_patterns.items():
+            if any(marker.lower() in candidate_text.lower() for marker in markers):
+                project_auth_context.add(label)
     for path in sorted(files):
         try:
             if path.stat().st_size > 1_000_000:
@@ -235,7 +290,7 @@ def analyze_python_flows(root: str | Path) -> dict:
         visitor = FlowVisitor(source, relative)
         visitor.visit(ast.parse(source))
         all_findings.extend(visitor.findings)
-        all_findings.extend(_route_guard_findings(source, relative))
+        all_findings.extend(_route_guard_findings(source, relative, sorted(project_auth_context)))
     return {
         "engine": "python-intraprocedural-dataflow-v1",
         "files_analyzed": scanned,
@@ -243,7 +298,7 @@ def analyze_python_flows(root: str | Path) -> dict:
         "findings": all_findings,
         "limitations": [
             "Data-flow tracking is intraprocedural and conservative; it does not resolve dynamic dispatch, aliases, inter-file calls, framework middleware, or full control-flow/path conditions.",
-            "Route guard checks recognize common guard tokens only and may miss external middleware or report false positives.",
+            "Route guard checks resolve direct same-file helper calls and report project-wide middleware/framework signals, but cannot prove those controls cover a route; cross-file and dynamic call resolution remain incomplete.",
             "No code is executed and no exploitability or runtime reachability is established.",
         ],
     }
