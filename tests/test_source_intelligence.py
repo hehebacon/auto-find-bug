@@ -54,6 +54,23 @@ class SourceIntelligenceTests(unittest.TestCase):
             self.assertTrue((workspace / "reports" / "source-intelligence-report.md").is_file())
             self.assertTrue((workspace / "source-intelligence" / "dependency-inventory.json").is_file())
 
+    def test_pipeline_includes_source_to_sink_flow_and_trace_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "project"
+            source.mkdir()
+            (source / "app.py").write_text('def endpoint(request):\\n    value = request.args.get("q")\\n    query = f"SELECT * FROM items WHERE name = \'{value}\'"\\n    cursor.execute(query)\\n', encoding="utf-8")
+            workspace = root / "workspace"
+            workspace.mkdir()
+            run_analysis(source, workspace)
+            data = json.loads((workspace / "findings" / "findings.json").read_text(encoding="utf-8"))
+            flow = next(item for item in data["findings"] if item["rule_id"] == "FLOW-PY-003")
+            report = (workspace / "reports" / "source-intelligence-report.md").read_text(encoding="utf-8")
+            self.assertEqual(flow["flow"]["source_line"], 2)
+            self.assertEqual(flow["flow"]["sink_line"], 4)
+            self.assertIn("Data-flow source", report)
+            self.assertEqual(flow["validation_status"], "not_validated")
+
 
 if __name__ == "__main__":
     unittest.main()
