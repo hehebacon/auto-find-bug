@@ -42,9 +42,10 @@ jobs:
             https://raw.githubusercontent.com/androguard/androguard/581f7a3251545a97f66ee92b674dd810ee380a00/tests/data/APK/TestActivity.apk \
             --output .ci-fixtures/TestActivity.apk
           test -s .ci-fixtures/TestActivity.apk
-      - name: Run tests with optional engines installed
+      - name: Run tests with optional engines installed and live OSV verification
         env:
           AFB_APK_FIXTURE: .ci-fixtures/TestActivity.apk
+          AFB_LIVE_OSV_TEST: "1"
         run: python -m unittest discover -s tests -v
       - name: Build wheel and verify bundled rules are packaged
         run: |
