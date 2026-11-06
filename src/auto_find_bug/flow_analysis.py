@@ -96,6 +96,8 @@ class FlowVisitor(ast.NodeVisitor):
             "confidence": "medium",
             "flow": {
                 "source": taint.source, "source_line": taint.source_line,
+                "source_evidence": self.lines[taint.source_line - 1].strip()[:220] if 0 < taint.source_line <= len(self.lines) else taint.source,
+                "variables": list(taint.variables),
                 "sink": sink, "sink_line": line,
                 "function": self.function_name,
                 "trace": [f"{self.relative}:{taint.source_line} source {taint.source}",
