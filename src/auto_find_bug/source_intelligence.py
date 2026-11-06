@@ -13,6 +13,9 @@ import xml.etree.ElementTree as ET
 from . import code_audit
 
 MAX_APK_BYTES = 200 * 1024 * 1024
+MAX_APK_MEMBER_BYTES = 128 * 1024 * 1024
+MAX_APK_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
+MAX_MANIFEST_BYTES = 8 * 1024 * 1024
 
 
 def _sha256(path: Path) -> str:
@@ -43,7 +46,7 @@ def discover_dependencies(root: str | Path) -> dict[str, Any]:
             item["version_is_exact"] = True
 
     for path in base.rglob("*"):
-        if not path.is_file() or any(part in ignored for part in path.parts) or path.stat().st_size > 2_000_000:
+        if path.is_symlink() or not path.is_file() or any(part in ignored for part in path.parts) or path.stat().st_size > 2_000_000:
             continue
         rel = path.relative_to(base)
         if path.name == "requirements.txt":
@@ -159,9 +162,12 @@ def analyze_apk(apk_path: str | Path) -> dict[str, Any]:
         infos = archive.infolist()
         if len(infos) > 20000:
             raise ValueError("APK contains too many archive entries.")
+        total_uncompressed = sum(item.file_size for item in infos)
+        if total_uncompressed > MAX_APK_UNCOMPRESSED_BYTES:
+            raise ValueError("APK exceeds the total uncompressed archive size limit.")
         for info in infos:
             member = PurePosixPath(info.filename)
-            if member.is_absolute() or ".." in member.parts or info.file_size > MAX_APK_BYTES:
+            if member.is_absolute() or ".." in member.parts or info.file_size > MAX_APK_MEMBER_BYTES:
                 raise ValueError("APK contains an unsafe or oversized archive entry.")
         names = [item.filename for item in infos]
         manifest_status = "missing"
@@ -170,6 +176,9 @@ def analyze_apk(apk_path: str | Path) -> dict[str, Any]:
         package = None
         sdk = {}
         if "AndroidManifest.xml" in names:
+            manifest_info = archive.getinfo("AndroidManifest.xml")
+            if manifest_info.file_size > MAX_MANIFEST_BYTES:
+                raise ValueError("APK AndroidManifest.xml exceeds the 8 MiB decoding limit.")
             raw = archive.read("AndroidManifest.xml")
             try:
                 manifest_text = raw.decode("utf-8")
