@@ -59,6 +59,8 @@ class FlowVisitor(ast.NodeVisitor):
             return self._expr_taint(node.value) or self._expr_taint(node.slice)
         if isinstance(node, ast.JoinedStr):
             return next((self._expr_taint(value) for value in node.values if self._expr_taint(value)), None)
+        if isinstance(node, ast.FormattedValue):
+            return self._expr_taint(node.value)
         if isinstance(node, ast.BinOp):
             return self._expr_taint(node.left) or self._expr_taint(node.right)
         if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
@@ -157,8 +159,7 @@ class FlowVisitor(ast.NodeVisitor):
                 isinstance(node.args[0], ast.Call) and isinstance(node.args[0].func, ast.Attribute)
                 and node.args[0].func.attr == "format"
             )
-            parameterized = len(node.args) > 1 or any(k.arg in {"params", "parameters"} for k in node.keywords)
-            if query_taint and interpolated and not parameterized:
+            if query_taint and interpolated:
                 self._emit("FLOW-PY-003", "HIGH", "Untrusted data may reach dynamically constructed SQL",
                            node, query_taint, name, "Use parameter placeholders and pass values separately; verify the driver’s parameter binding.")
         elif name in {"render_template_string", "Markup"} and node.args:
