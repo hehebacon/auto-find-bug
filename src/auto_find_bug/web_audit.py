@@ -38,6 +38,43 @@ def _finding(rule_id: str, severity: str, title: str, detail: str, recommendatio
     return {"rule_id": rule_id, "severity": severity, "title": title, "detail": detail, "recommendation": recommendation}
 
 
+def _access_gate_signals(headers: dict, body: str, status_code: int) -> tuple[list[str], bool]:
+    """Classify access restrictions without attempting to get around them."""
+    signals: list[str] = []
+    lowered_headers = {str(key).lower(): str(value).lower() for key, value in headers.items()}
+    lowered_body = body.lower()
+
+    if status_code == 403:
+        signals.append("http_403_access_denied")
+    elif status_code == 429:
+        signals.append("http_429_rate_limited")
+    elif status_code == 503:
+        signals.append("http_503_service_unavailable")
+
+    for header in ("cf-mitigated", "x-datadome", "x-akamai-session-info", "x-sucuri-id"):
+        if lowered_headers.get(header):
+            signals.append("protection_header:" + header)
+    if lowered_headers.get("cf-mitigated") == "challenge":
+        signals.append("cloudflare_challenge_header")
+
+    markers = (
+        "cf-chl-", "challenge-platform", "captcha", "verify you are human",
+        "datadome", "akamai bot manager", "perimeterx", "imperva",
+        "px-captcha", "cloudflare ray id",
+    )
+    for marker in markers:
+        if marker in lowered_body:
+            signals.append("challenge_page_marker:" + marker)
+
+    bot_detected = any(
+        item.startswith("protection_header:")
+        or item.startswith("challenge_page_marker:")
+        or item == "cloudflare_challenge_header"
+        for item in signals
+    )
+    return sorted(set(signals)), bot_detected
+
+
 def audit_public_page(url: str, *, authorized: bool = False) -> dict:
     """Make one bounded GET to an operator-authorized HTTPS page; never crawl or probe."""
     if not authorized:
@@ -52,20 +89,58 @@ def audit_public_page(url: str, *, authorized: bool = False) -> dict:
             with client.stream("GET", url) as response:
                 if response.is_redirect:
                     raise ValueError("The page redirected. Supply its final canonical HTTPS URL directly.")
-                response.raise_for_status()
                 headers = dict(response.headers)
                 content_type = response.headers.get("content-type", "").lower()
-                if "text/html" not in content_type:
-                    raise ValueError("The supplied URL did not return HTML; this review supports one HTML page.")
+                status_code = response.status_code
                 chunks = []
                 total = 0
                 for chunk in response.iter_bytes():
                     total += len(chunk)
                     if total > MAX_BODY_BYTES:
-                        raise ValueError("The HTML page exceeds the 1 MB review limit.")
+                        raise ValueError("The response body exceeds the 1 MB review limit.")
                     chunks.append(chunk)
                 body = b"".join(chunks).decode(response.encoding or "utf-8", errors="replace")
-                status_code = response.status_code
+                gate_signals, bot_detected = _access_gate_signals(headers, body, status_code)
+                if status_code in (403, 429, 503) or bot_detected:
+                    if status_code == 429:
+                        state = "rate_limited"
+                    elif bot_detected:
+                        state = "anti_bot_or_challenge_detected"
+                    elif status_code == 403:
+                        state = "access_denied"
+                    else:
+                        state = "upstream_unavailable"
+                    finding = _finding(
+                        "WEB-ACCESS-001", "INFO",
+                        "Access restriction or automated-traffic challenge detected",
+                        f"HTTP {status_code}; signals: {', '.join(gate_signals) or 'none'}",
+                        "Stop automated requests. Use the site's documented API, request permission, or analyze an operator-provided export. Do not attempt to evade the restriction.",
+                    )
+                    return {
+                        "scanner": "auto-find-bug-passive-web-review",
+                        "url": url,
+                        "http_status": status_code,
+                        "content_type": content_type,
+                        "access_state": state,
+                        "anti_bot_detected": bot_detected,
+                        "access_gate_signals": gate_signals,
+                        "retry_after": headers.get("retry-after"),
+                        "bytes_reviewed": len(body.encode("utf-8")),
+                        "requests_sent": 1,
+                        "crawl_performed": False,
+                        "forms_submitted": False,
+                        "payloads_sent": False,
+                        "finding_count": 1,
+                        "findings": [finding],
+                        "limitations": [
+                            "The tool records access restrictions and challenge signals only; it does not solve, evade, or retry challenges.",
+                            "A 403 or 429 alone does not prove anti-bot protection; it may represent an ordinary access policy or rate limit.",
+                            "Use documented APIs or data supplied by an authorized operator.",
+                        ],
+                    }
+                response.raise_for_status()
+                if "text/html" not in content_type:
+                    raise ValueError("The supplied URL did not return HTML; this review supports one HTML page.")
     except httpx.HTTPError as exc:
         raise RuntimeError(f"Could not retrieve the supplied page ({type(exc).__name__}).") from None
 
@@ -117,6 +192,9 @@ def audit_public_page(url: str, *, authorized: bool = False) -> dict:
         "url": url,
         "http_status": status_code,
         "content_type": content_type,
+        "access_state": "accessible",
+        "anti_bot_detected": False,
+        "access_gate_signals": [],
         "bytes_reviewed": len(body.encode("utf-8")),
         "requests_sent": 1,
         "crawl_performed": False,
@@ -128,6 +206,7 @@ def audit_public_page(url: str, *, authorized: bool = False) -> dict:
             "This is a single-page, read-only posture review, not an active vulnerability scan.",
             "Missing headers and HTML patterns are hardening observations, not proof of an exploitable vulnerability.",
             "No login, form submission, payload, endpoint enumeration, crawling, or intrusive testing is performed.",
+            "If a 403/429/503 or anti-bot challenge is detected, the tool stops and records it without evasion or automatic retry.",
             "Review only sites you own or are explicitly authorized to assess.",
         ],
     }
