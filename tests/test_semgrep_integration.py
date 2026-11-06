@@ -31,6 +31,29 @@ class SemgrepIntegrationTests(unittest.TestCase):
         self.assertEqual(finding["line"], 4)
         self.assertIn("os.system(value)", finding["evidence"])
 
+    def test_java_header_to_sql_and_process_sinks(self):
+        cases = {
+            "sql.java": (
+                "class Demo { void handle(HttpServletRequest request, Connection connection) throws Exception { "
+                "String value = request.getHeader(\"q\"); String sql = \"SELECT * FROM users WHERE name='\" + value + \"'\"; "
+                "connection.prepareCall(sql); } }",
+                "auto-find-bug.java.servlet-to-sql",
+            ),
+            "command.java": (
+                "class Demo { void handle(HttpServletRequest request) throws Exception { "
+                "String value = request.getHeader(\"cmd\"); Runtime.getRuntime().exec(value); } }",
+                "auto-find-bug.java.servlet-to-command",
+            ),
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name, (source, _rule) in cases.items():
+                (root / name).write_text(source, encoding="utf-8")
+            result = analyze_with_semgrep(root)
+        observed = {(Path(item["file"]).name, item["rule_id"]) for item in result["findings"]}
+        for name, (_source, rule_id) in cases.items():
+            self.assertIn((name, rule_id), observed, msg=f"Missing Java taint result for {name}: {result}")
+
 
 if __name__ == "__main__":
     unittest.main()
