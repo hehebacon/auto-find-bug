@@ -252,7 +252,7 @@ def analyze_python_flows(root: str | Path) -> dict:
         return {"engine": "python-intraprocedural-dataflow-v1", "files_analyzed": 0, "finding_count": 0, "findings": [], "limitations": ["Deep data-flow analysis currently supports Python source files; other languages retain their existing heuristic static checks."]}
     files = [base] if base.is_file() else [
         p for p in base.rglob("*.py")
-        if p.is_file() and not any(part in {".git", ".venv", "venv", "node_modules", "dist", "build", "__pycache__"} for part in p.parts)
+        if not p.is_symlink() and p.is_file() and not any(part in {".git", ".venv", "venv", "node_modules", "dist", "build", "__pycache__"} for part in p.parts)
     ]
     all_findings = []
     scanned = 0
