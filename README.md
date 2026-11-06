@@ -179,7 +179,7 @@ Results are saved under source-intelligence/, online-intelligence/, findings/fin
 
 Run: `bash run.sh`
 
-Manual setup: `python -m venv .venv`, activate it, then `pip install -e .` and run `auto-find-bug`. For optional binary AndroidManifest.xml decoding, install `pip install -e ".[apk]"` (Androguard extra).
+Manual setup: `python -m venv .venv`, activate it, then `pip install -e .` and run `auto-find-bug`. For optional binary AndroidManifest.xml decoding, install `pip install -e ".[apk]"  # Androguard 4.x compatibility range` (Androguard extra).
 
 Tests: `python -m unittest discover -s tests -v`
 
