@@ -1,0 +1,156 @@
+rules:
+  - id: auto-find-bug.python.request-to-sql
+    languages: [python]
+    mode: taint
+    severity: WARNING
+    message: Request-controlled data may reach a database query. Review parameter binding and query construction.
+    metadata:
+      cwe: "CWE-89"
+      category: security
+      confidence: MEDIUM
+    pattern-sources:
+      - pattern: request.args.get(...)
+      - pattern: request.form.get(...)
+      - pattern: request.values.get(...)
+      - pattern: request.json.get(...)
+      - pattern: request.GET.get(...)
+      - pattern: request.POST.get(...)
+    pattern-sinks:
+      - pattern: $DB.execute($QUERY)
+      - pattern: $DB.raw($QUERY)
+
+  - id: auto-find-bug.python.request-to-shell
+    languages: [python]
+    mode: taint
+    severity: ERROR
+    message: Request-controlled data may reach an operating-system command sink.
+    metadata:
+      cwe: "CWE-78"
+      category: security
+      confidence: MEDIUM
+    pattern-sources:
+      - pattern: request.args.get(...)
+      - pattern: request.form.get(...)
+      - pattern: request.values.get(...)
+      - pattern: request.json.get(...)
+    pattern-sinks:
+      - pattern: os.system($CMD)
+      - pattern: os.popen($CMD)
+      - pattern: subprocess.$FUNC($CMD, ..., shell=True, ...)
+
+  - id: auto-find-bug.python.request-to-eval
+    languages: [python]
+    mode: taint
+    severity: ERROR
+    message: Request-controlled data may reach dynamic code evaluation.
+    metadata:
+      cwe: "CWE-95"
+      category: security
+      confidence: MEDIUM
+    pattern-sources:
+      - pattern: request.args.get(...)
+      - pattern: request.form.get(...)
+      - pattern: request.values.get(...)
+      - pattern: request.json.get(...)
+    pattern-sinks:
+      - pattern: eval($VALUE)
+      - pattern: exec($VALUE)
+
+  - id: auto-find-bug.javascript.request-to-eval
+    languages: [javascript, typescript]
+    mode: taint
+    severity: ERROR
+    message: Request-controlled data may reach dynamic code evaluation.
+    metadata:
+      cwe: "CWE-95"
+      category: security
+      confidence: MEDIUM
+    pattern-sources:
+      - pattern: $REQ.query.$FIELD
+      - pattern: $REQ.params.$FIELD
+      - pattern: $REQ.body.$FIELD
+    pattern-sinks:
+      - pattern: eval($VALUE)
+      - pattern: new Function($VALUE)
+
+  - id: auto-find-bug.javascript.request-to-shell
+    languages: [javascript, typescript]
+    mode: taint
+    severity: ERROR
+    message: Request-controlled data may reach a child process command sink.
+    metadata:
+      cwe: "CWE-78"
+      category: security
+      confidence: MEDIUM
+    pattern-sources:
+      - pattern: $REQ.query.$FIELD
+      - pattern: $REQ.params.$FIELD
+      - pattern: $REQ.body.$FIELD
+    pattern-sinks:
+      - pattern: child_process.exec($CMD)
+      - pattern: exec($CMD)
+
+  - id: auto-find-bug.java.servlet-to-sql
+    languages: [java]
+    mode: taint
+    severity: WARNING
+    message: Servlet request data may reach a SQL statement sink.
+    metadata:
+      cwe: "CWE-89"
+      category: security
+      confidence: MEDIUM
+    pattern-sources:
+      - pattern: $REQ.getParameter(...)
+    pattern-sinks:
+      - pattern: $STMT.executeQuery($QUERY)
+      - pattern: $STMT.execute($QUERY)
+      - pattern: $STMT.executeUpdate($QUERY)
+
+  - id: auto-find-bug.java.servlet-to-command
+    languages: [java]
+    mode: taint
+    severity: ERROR
+    message: Servlet request data may reach a process execution sink.
+    metadata:
+      cwe: "CWE-78"
+      category: security
+      confidence: MEDIUM
+    pattern-sources:
+      - pattern: $REQ.getParameter(...)
+    pattern-sinks:
+      - pattern: Runtime.getRuntime().exec($CMD)
+
+  - id: auto-find-bug.php.request-to-sql
+    languages: [php]
+    mode: taint
+    severity: WARNING
+    message: Request-controlled PHP data may reach a SQL query sink.
+    metadata:
+      cwe: "CWE-89"
+      category: security
+      confidence: MEDIUM
+    pattern-sources:
+      - pattern: $_GET[...]
+      - pattern: $_POST[...]
+      - pattern: $_REQUEST[...]
+    pattern-sinks:
+      - pattern: mysqli_query(..., $QUERY, ...)
+      - pattern: $DB->query($QUERY)
+
+  - id: auto-find-bug.php.request-to-shell
+    languages: [php]
+    mode: taint
+    severity: ERROR
+    message: Request-controlled PHP data may reach a shell command sink.
+    metadata:
+      cwe: "CWE-78"
+      category: security
+      confidence: MEDIUM
+    pattern-sources:
+      - pattern: $_GET[...]
+      - pattern: $_POST[...]
+      - pattern: $_REQUEST[...]
+    pattern-sinks:
+      - pattern: shell_exec($CMD)
+      - pattern: system($CMD)
+      - pattern: exec($CMD)
