@@ -155,11 +155,7 @@ class FlowVisitor(ast.NodeVisitor):
                            node, value_taint, name, "Avoid shell command strings. Use fixed executables and validated argument arrays with shell=False.")
         elif name in {"cursor.execute", "db.execute", "conn.execute", "connection.execute"} and node.args:
             query_taint = self._expr_taint(node.args[0])
-            interpolated = isinstance(node.args[0], (ast.JoinedStr, ast.BinOp)) or (
-                isinstance(node.args[0], ast.Call) and isinstance(node.args[0].func, ast.Attribute)
-                and node.args[0].func.attr == "format"
-            )
-            if query_taint and interpolated:
+            if query_taint:
                 self._emit("FLOW-PY-003", "HIGH", "Untrusted data may reach dynamically constructed SQL",
                            node, query_taint, name, "Use parameter placeholders and pass values separately; verify the driver’s parameter binding.")
         elif name in {"render_template_string", "Markup"} and node.args:
@@ -191,7 +187,7 @@ def _route_guard_findings(source: str, relative: str) -> list[dict]:
         identity = (node.name + " " + " ".join(decorators)).lower()
         if not any(word in identity for word in sensitive):
             continue
-        body_text = ast.get_source_segment(source, node) or ""
+        body_text = (ast.get_source_segment(source, node) or "") + " " + " ".join(decorators)
         if any(marker.lower() in body_text.lower() for marker in guards):
             continue
         line = node.lineno
