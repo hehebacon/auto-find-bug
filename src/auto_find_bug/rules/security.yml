@@ -101,10 +101,17 @@ rules:
       confidence: MEDIUM
     pattern-sources:
       - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getParameterValues(...)
+      - pattern: $REQ.getHeader(...)
+      - pattern: $REQ.getHeaders(...)
+      - pattern: $REQ.getQueryString()
+      - pattern: $REQ.getCookies()
     pattern-sinks:
       - pattern: $STMT.executeQuery($QUERY)
       - pattern: $STMT.execute($QUERY)
       - pattern: $STMT.executeUpdate($QUERY)
+      - pattern: $CONN.prepareCall($QUERY)
+      - pattern: $CONN.prepareStatement($QUERY)
 
   - id: auto-find-bug.java.servlet-to-command
     languages: [java]
@@ -117,8 +124,16 @@ rules:
       confidence: MEDIUM
     pattern-sources:
       - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getParameterValues(...)
+      - pattern: $REQ.getHeader(...)
+      - pattern: $REQ.getHeaders(...)
+      - pattern: $REQ.getQueryString()
+      - pattern: $REQ.getCookies()
     pattern-sinks:
       - pattern: Runtime.getRuntime().exec($CMD)
+      - pattern: $R.exec($CMD)
+      - pattern: new ProcessBuilder($CMD)
+      - pattern: $PB.command($CMD)
 
   - id: auto-find-bug.php.request-to-sql
     languages: [php]
