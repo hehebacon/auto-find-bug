@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 from .network import create_http_client
 
 MAX_BODY_BYTES = 1_000_000
-USER_AGENT = "auto-find-bug/0.7.0 (passive security posture review)"
+USER_AGENT = "auto-find-bug/0.8.0 (passive security posture review)"
 
 
 def validate_audit_url(value: str) -> str:
