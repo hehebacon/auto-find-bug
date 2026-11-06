@@ -54,6 +54,54 @@ class SourceIntelligenceTests(unittest.TestCase):
             self.assertTrue((workspace / "reports" / "source-intelligence-report.md").is_file())
             self.assertTrue((workspace / "source-intelligence" / "dependency-inventory.json").is_file())
 
+    def test_dex_analysis_uses_androguard_call_graph_adapter(self):
+        import sys
+        import types
+        from unittest.mock import patch
+
+        class FakeGraph:
+            def edges(self, data=True):
+                return [("Lsample/A;->source()V", "Lsample/B;->sink()V", {"offset": 12})]
+
+        class FakeAnalysis:
+            def get_classes(self):
+                return ["Lsample/A;", "Lsample/B;"]
+
+            def get_methods(self):
+                return ["source", "sink"]
+
+            def get_call_graph(self, no_isolated=True):
+                self.assert_no_isolated = no_isolated
+                return FakeGraph()
+
+        fake_analysis = FakeAnalysis()
+        misc = types.ModuleType("androguard.misc")
+        misc.AnalyzeAPK = lambda _path: (object(), [object()], fake_analysis)
+        package = types.ModuleType("androguard")
+        package.__path__ = []
+        with patch.dict(sys.modules, {"androguard": package, "androguard.misc": misc}):
+            with tempfile.TemporaryDirectory() as tmp:
+                apk = Path(tmp) / "dex.apk"
+                with zipfile.ZipFile(apk, "w") as archive:
+                    archive.writestr("AndroidManifest.xml", '<manifest package="sample"><application/></manifest>')
+                    archive.writestr("classes.dex", b"synthetic-dex-marker")
+                result = analyze_apk(apk)
+        self.assertEqual(result["dex_analysis"]["status"], "analyzed")
+        self.assertEqual(result["dex_analysis"]["class_count"], 2)
+        self.assertEqual(result["dex_analysis"]["method_count"], 2)
+        self.assertEqual(result["dex_analysis"]["call_graph_edges"], 1)
+        self.assertIn("source()V", result["dex_analysis"]["call_graph_sample"][0]["caller"])
+
+    def test_dex_size_limit_is_reported_without_calling_androguard(self):
+        from unittest.mock import patch
+        from auto_find_bug.source_intelligence import _analyze_apk_dex
+        with tempfile.TemporaryDirectory() as tmp:
+            apk = Path(tmp) / "large.apk"
+            apk.write_bytes(b"placeholder")
+            with patch.dict("sys.modules", {"androguard": None, "androguard.misc": None}):
+                result = _analyze_apk_dex(apk, ["classes.dex"], 64 * 1024 * 1024 + 1)
+        self.assertEqual(result["status"], "skipped_size_limit")
+
 
 if __name__ == "__main__":
     unittest.main()
