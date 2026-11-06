@@ -165,7 +165,12 @@ def analyze_apk(apk_path: str | Path) -> dict[str, Any]:
 
 
 def analyze_source(path: str | Path) -> dict[str, Any]:
+    from .flow_analysis import analyze_python_flows
     result = code_audit.analyze_source(path)
+    flows = analyze_python_flows(path)
+    result["findings"].extend(flows["findings"])
+    result["finding_count"] = len(result["findings"])
+    result["flow_analysis"] = {"engine": flows["engine"], "files_analyzed": flows["files_analyzed"], "finding_count": flows["finding_count"], "limitations": flows["limitations"]}
     result["source_type"] = "source_code"
     return result
 
@@ -186,6 +191,12 @@ def _merge_findings(workspace: Path, incoming: list[dict[str, Any]]) -> dict[str
     now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
     for raw in incoming:
         item = dict(raw)
+        item.setdefault("validation_status", "not_validated")
+        item.setdefault("impact_assessment", "requires_manual_review")
+        item.setdefault("reproducibility", "not_attempted")
+        cwe_by_rule = {"FLOW-PY-001": "CWE-95", "FLOW-PY-002": "CWE-78", "FLOW-PY-003": "CWE-89", "FLOW-PY-004": "CWE-79", "ACCESS-PY-001": "CWE-862"}
+        if item.get("rule_id") in cwe_by_rule:
+            item.setdefault("cwe", cwe_by_rule[item["rule_id"]])
         identity = "|".join(str(item.get(key, "")) for key in ("rule_id", "file", "line", "component", "evidence", "advisory_id"))
         item["finding_id"] = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
         previous = existing.get(item["finding_id"], {})
