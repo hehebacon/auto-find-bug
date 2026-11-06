@@ -130,7 +130,7 @@ The tool checks that the evidence reference exists inside the workspace, but doe
 
 ## One-page passive web review
 
-The `web-audit` command makes exactly one bounded HTTPS GET request to one supplied page after the operator confirms ownership or explicit permission. It checks response security headers, cookie attributes, insecure form actions, and external scripts without Subresource Integrity. It refuses redirects, non-HTTPS URLs, non-public DNS results, non-standard ports, and HTML bodies over 1 MB. It does not crawl, enumerate endpoints, log in, submit forms, send test payloads, or attempt exploitation. Missing headers are hardening observations, not proof of a vulnerability.
+The `web-audit` command makes exactly one bounded HTTPS GET request to one supplied page after the operator confirms ownership or explicit permission. It checks response security headers, cookie attributes, insecure form actions, and external scripts without Subresource Integrity. It refuses redirects, non-HTTPS URLs, non-public DNS results, non-standard ports, and bodies over 1 MB. It records 403/429/503 and common anti-bot challenge signals, then stops without solving challenges, retrying, changing identity, or evading access controls. It does not crawl, enumerate endpoints, log in, submit forms, send test payloads, or attempt exploitation. Missing headers are hardening observations, not proof of a vulnerability.
 
 ```bash
 # Only run for a site you own or are explicitly authorized to review
@@ -142,23 +142,28 @@ auto-find-bug web-audit https://your-authorized-site.example/ --confirm-authoriz
 
 ## Source Intelligence
 
-Version 0.6.0 adds local source/APK inventory, exact-version OSV advisory correlation, Python source-to-sink tracing, heuristic sensitive-route guard review, and evidence-rich technical reports.
+Version 0.7.0 adds optional bundled-rule Semgrep taint analysis across Python, JavaScript/TypeScript, Java, and PHP; same-file Python authorization helper tracing; bounded Androguard DEX call-graph summaries; and anti-bot/access-gate detection that stops without evasion.
 
 Commands:
 
 ```bash
 auto-find-bug source scan ./project
 auto-find-bug source scan ./project --online
+# Optional deeper multi-language taint checks (after installing the [sast] extra)
+pip install -e ".[sast]"
+auto-find-bug source scan ./project
 auto-find-bug source dependencies ./project
 auto-find-bug apk analyze ./application.apk
 auto-find-bug analyze ./project --workspace ./existing-workspace --online
 ```
 
-Source checks reuse the local analyzer and add an intraprocedural Python data-flow engine. It traces common request/input sources through local assignments and expressions into dynamic code execution, shell command, SQL interpolation, and raw HTML rendering sinks. It also flags sensitive-looking route handlers when no common in-function authorization marker is recognized; these route warnings are low-confidence because middleware and external guards may live elsewhere. Other supported languages retain their existing heuristic checks.
+Source checks reuse the local analyzer and add an intraprocedural Python data-flow engine plus an optional Semgrep engine. Install the latter with `pip install -e ".[sast]"`. Semgrep runs only the rule file bundled with this package, disables metrics, and does not query a remote rule registry. Bundled taint rules cover selected request-to-sink patterns in Python, JavaScript/TypeScript, Java, and PHP. Coverage is rule-based, not full language or framework coverage; Semgrep's documented interprocedural analysis is a separate capability and is not claimed by this local Community integration. Findings still require source-context review.
+
+Python route review now resolves a bounded set of direct same-file helper calls and records project-wide middleware/framework signals. This reduces some false positives but does not prove a middleware protects a route. Aliases, cross-file calls, dynamic dispatch, and full framework policy evaluation remain outside this engine.
 
 Each flow lead records source and sink file/line, function, evidence, rule, recommendation, confidence, and mapped CWE where available. Reports also state validation status, impact assessment, and reproducibility as not yet established. Dependency correlation sends only exact package versions from supported lockfiles to the public OSV API.
 
-APK analysis validates and inventories the local archive, records its hash, manifest metadata when readable, declared permissions, DEX names, and native library paths. Text-XML manifests receive configuration checks. Binary Android manifests are inventoried but not decoded in the base build; provide a decoded manifest or matching source for component-level analysis. Compiled APKs do not contain the original source tree, so the tool does not claim to recover original source lines or reconstruct exact original code.
+APK analysis validates and inventories the local archive, records its hash, manifest metadata when readable, declared permissions, DEX names, and native library paths. With the optional Androguard extra, it can also summarize DEX class/method counts and a bounded sample of call-graph edges. Call-graph analysis is skipped above configured size/method limits. These are method-level DEX references, not original source code or reliable original source line numbers. Text-XML manifests receive configuration checks; binary manifests can be decoded with the optional extra.
 
 Results are saved under source-intelligence/, online-intelligence/, findings/findings.json, and reports/source-intelligence-report.md. New records start as potential; existing reviewer notes and triage statuses are preserved. Static findings and public advisory matches require human review and do not establish impact or applicability.
 
@@ -184,4 +189,4 @@ Each run creates a separate workspace under `tools/outdata/<program-handle>/<tim
 
 ## Status
 
-Implemented: policy extraction/manual import, read-only HackerOne public-scope snapshot import, heuristic policy analysis, local static source review, Python intraprocedural data-flow tracing, heuristic route-guard review, APK archive inventory and text-manifest checks, dependency lockfile inventory, OSV advisory correlation for exact versions, evidence-rich report generation, workspace finding integration, and human triage. The tool does not perform active target checks or claim to discover unknown vulnerabilities. Policy completeness, authorization, and finding validation require human review.
+Implemented: policy extraction/manual import, read-only HackerOne public-scope snapshot import, heuristic policy analysis, local static source review, Python intraprocedural data-flow tracing, optional multi-language Semgrep taint rules, bounded Python helper-call authorization review, APK archive/manifest and optional DEX call-graph inventory, dependency lockfile inventory, OSV advisory correlation for exact versions, anti-bot/access-gate detection with safe stop behavior, evidence-rich report generation, workspace finding integration, and human triage. The tool does not perform active target checks or claim to discover unknown vulnerabilities. Policy completeness, authorization, and finding validation require human review.
