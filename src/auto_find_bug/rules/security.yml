@@ -106,6 +106,10 @@ rules:
       - pattern: $REQ.getHeaders(...)
       - pattern: $REQ.getQueryString()
       - pattern: $REQ.getCookies()
+    pattern-propagators:
+      - pattern: $LIST.add($ELEMENT)
+        from: $ELEMENT
+        to: $LIST
     pattern-sinks:
       - pattern: $STMT.executeQuery($QUERY)
       - pattern: $STMT.execute($QUERY)
@@ -129,6 +133,10 @@ rules:
       - pattern: $REQ.getHeaders(...)
       - pattern: $REQ.getQueryString()
       - pattern: $REQ.getCookies()
+    pattern-propagators:
+      - pattern: $LIST.add($ELEMENT)
+        from: $ELEMENT
+        to: $LIST
     pattern-sinks:
       - pattern: Runtime.getRuntime().exec($CMD)
       - pattern: $R.exec($CMD)
