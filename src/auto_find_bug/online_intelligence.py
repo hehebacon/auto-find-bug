@@ -11,7 +11,7 @@ from .network import create_http_client
 
 OSV_BATCH_URL = "https://api.osv.dev/v1/querybatch"
 MAX_BATCH = 50
-USER_AGENT = "auto-find-bug/0.8.0 (public advisory correlation)"
+USER_AGENT = "auto-find-bug/0.8.1 (public advisory correlation)"
 
 
 def _advisory_record(advisory: dict[str, Any]) -> dict[str, Any]:
@@ -87,10 +87,9 @@ def correlate_dependencies(dependencies: list[dict[str, Any]]) -> dict[str, Any]
         raw_advisories = response_item.get("vulns") or []
         if not isinstance(raw_advisories, list):
             raise RuntimeError("OSV returned a malformed advisory list; correlation was stopped.")
-        advisories = [
-            _advisory_record(item) for item in raw_advisories
-            if isinstance(item, dict)
-        ]
+        if any(not isinstance(item, dict) for item in raw_advisories):
+            raise RuntimeError("OSV returned a malformed advisory record; correlation was stopped.")
+        advisories = [_advisory_record(item) for item in raw_advisories]
         results.append({
             **dependency,
             "query_version": dependency["version"],
