@@ -142,7 +142,7 @@ auto-find-bug web-audit https://your-authorized-site.example/ --confirm-authoriz
 
 ## Source Intelligence
 
-Version 0.5.0 adds local source and APK inventory, dependency lockfile parsing, optional OSV public advisory correlation, and normalized finding records.
+Version 0.6.0 adds local source/APK inventory, exact-version OSV advisory correlation, Python source-to-sink tracing, heuristic sensitive-route guard review, and evidence-rich technical reports.
 
 Commands:
 
@@ -154,7 +154,11 @@ auto-find-bug apk analyze ./application.apk
 auto-find-bug analyze ./project --workspace ./existing-workspace --online
 ```
 
-Source checks reuse the existing local analyzer. Dependency correlation sends only exact package versions from supported lockfiles to the public OSV API. APK analysis validates and inventories the local archive, records its hash, manifest metadata when readable, declared permissions, DEX names, and native library paths. Text-XML manifests receive configuration checks. Binary Android manifests are inventoried but not decoded in this base build; provide a decoded manifest or matching source for component-level analysis. Compiled APKs do not contain the original source tree, so the tool does not claim to recover original source lines.
+Source checks reuse the local analyzer and add an intraprocedural Python data-flow engine. It traces common request/input sources through local assignments and expressions into dynamic code execution, shell command, SQL interpolation, and raw HTML rendering sinks. It also flags sensitive-looking route handlers when no common in-function authorization marker is recognized; these route warnings are low-confidence because middleware and external guards may live elsewhere. Other supported languages retain their existing heuristic checks.
+
+Each flow lead records source and sink file/line, function, evidence, rule, recommendation, confidence, and mapped CWE where available. Reports also state validation status, impact assessment, and reproducibility as not yet established. Dependency correlation sends only exact package versions from supported lockfiles to the public OSV API.
+
+APK analysis validates and inventories the local archive, records its hash, manifest metadata when readable, declared permissions, DEX names, and native library paths. Text-XML manifests receive configuration checks. Binary Android manifests are inventoried but not decoded in the base build; provide a decoded manifest or matching source for component-level analysis. Compiled APKs do not contain the original source tree, so the tool does not claim to recover original source lines or reconstruct exact original code.
 
 Results are saved under source-intelligence/, online-intelligence/, findings/findings.json, and reports/source-intelligence-report.md. New records start as potential; existing reviewer notes and triage statuses are preserved. Static findings and public advisory matches require human review and do not establish impact or applicability.
 
@@ -180,4 +184,4 @@ Each run creates a separate workspace under `tools/outdata/<program-handle>/<tim
 
 ## Status
 
-Implemented: policy extraction/manual import, read-only HackerOne public-scope snapshot import, heuristic policy analysis, local static source review, APK archive inventory and text-manifest checks, dependency lockfile inventory, OSV advisory correlation for exact versions, workspace finding integration, and human triage. The tool does not perform active target checks or claim to discover unknown vulnerabilities. Policy completeness, authorization, and finding validation require human review.
+Implemented: policy extraction/manual import, read-only HackerOne public-scope snapshot import, heuristic policy analysis, local static source review, Python intraprocedural data-flow tracing, heuristic route-guard review, APK archive inventory and text-manifest checks, dependency lockfile inventory, OSV advisory correlation for exact versions, evidence-rich report generation, workspace finding integration, and human triage. The tool does not perform active target checks or claim to discover unknown vulnerabilities. Policy completeness, authorization, and finding validation require human review.
