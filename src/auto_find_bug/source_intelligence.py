@@ -166,12 +166,34 @@ def analyze_apk(apk_path: str | Path) -> dict[str, Any]:
 
 def analyze_source(path: str | Path) -> dict[str, Any]:
     from .flow_analysis import analyze_python_flows
+    from .semgrep_analysis import analyze_with_semgrep
+
     result = code_audit.analyze_source(path)
     flows = analyze_python_flows(path)
+    semgrep = analyze_with_semgrep(path)
     result["findings"].extend(flows["findings"])
+    result["findings"].extend(semgrep["findings"])
     result["finding_count"] = len(result["findings"])
-    result["flow_analysis"] = {"engine": flows["engine"], "files_analyzed": flows["files_analyzed"], "finding_count": flows["finding_count"], "limitations": flows["limitations"]}
+    result["flow_analysis"] = {
+        "python": {
+            "engine": flows["engine"],
+            "files_analyzed": flows["files_analyzed"],
+            "finding_count": flows["finding_count"],
+            "limitations": flows["limitations"],
+        },
+        "semgrep": {
+            "engine": semgrep["engine"],
+            "available": semgrep["available"],
+            "files_analyzed": semgrep["files_analyzed"],
+            "finding_count": semgrep["finding_count"],
+            "note": semgrep["note"],
+        },
+    }
     result["limitations"].extend(flows["limitations"])
+    if not semgrep["available"]:
+        result["limitations"].append(semgrep["note"])
+    elif semgrep["note"] and "Only bundled local rules" not in semgrep["note"]:
+        result["limitations"].append(semgrep["note"])
     result["source_type"] = "source_code"
     return result
 
@@ -308,8 +330,10 @@ def run_analysis(input_path: str | Path, workspace_path: str | Path | None = Non
         f"- Input: {source}", f"- Input type: {result.get('source_type', 'source_code')}",
         f"- New review leads: {len(incoming)}", f"- Dependencies inventoried: {dependencies['dependency_count']}",
         f"- Online OSV correlation: {'enabled' if online else 'disabled'}",
-        f"- Python data-flow files: {result.get('flow_analysis', {}).get('files_analyzed', 0)}",
-        f"- Python data-flow review leads: {result.get('flow_analysis', {}).get('finding_count', 0)}", "",
+        f"- Python data-flow files: {result.get('flow_analysis', {}).get('python', {}).get('files_analyzed', 0)}",
+        f"- Python data-flow review leads: {result.get('flow_analysis', {}).get('python', {}).get('finding_count', 0)}",
+        f"- Semgrep available: {result.get('flow_analysis', {}).get('semgrep', {}).get('available', False)}",
+        f"- Semgrep review leads: {result.get('flow_analysis', {}).get('semgrep', {}).get('finding_count', 0)}", "",
         "## Findings", "",
     ]
     if not incoming:
