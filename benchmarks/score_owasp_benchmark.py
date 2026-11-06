@@ -67,14 +67,20 @@ def score(expected_csv: Path, semgrep_json: Path, benchmark_commit: str) -> dict
     for cwe, rule_id in RULE_BY_CWE.items():
         cases = [(name, case) for name, case in selected.items() if case["cwe"] == cwe]
         tp = fp = fn = tn = 0
+        missed_cases = []
+        false_positive_cases = []
+        detected_cases = []
         for name, case in cases:
             flagged = cwe in reported.get(name, set())
             if case["vulnerable"] and flagged:
                 tp += 1
+                detected_cases.append(name)
             elif case["vulnerable"] and not flagged:
                 fn += 1
+                missed_cases.append(name)
             elif not case["vulnerable"] and flagged:
                 fp += 1
+                false_positive_cases.append(name)
             else:
                 tn += 1
         precision = tp / (tp + fp) if tp + fp else 0.0
@@ -88,6 +94,9 @@ def score(expected_csv: Path, semgrep_json: Path, benchmark_commit: str) -> dict
             "recall": round(recall, 6),
             "false_positive_rate": round(fpr, 6),
             "youden_score": round(recall - fpr, 6),
+            "missed_cases_sample": missed_cases[:100],
+            "false_positive_cases_sample": false_positive_cases[:100],
+            "detected_cases_sample": detected_cases[:100],
         }
         report["categories"][cwe] = category
         for key in totals:
