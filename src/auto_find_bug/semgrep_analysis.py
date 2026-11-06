@@ -105,7 +105,7 @@ def analyze_with_semgrep(path: str | Path) -> dict[str, Any]:
     return {
         "available": True,
         "engine": "semgrep-local-rules",
-        "files_analyzed": payload.get("paths", {}).get("scanned", 0),
+        "files_analyzed": len(payload.get("paths", {}).get("scanned", [])) if isinstance(payload.get("paths", {}).get("scanned", []), list) else payload.get("paths", {}).get("scanned", 0),
         "finding_count": len(findings),
         "findings": findings,
         "note": note or "Only bundled local rules were used; metrics are disabled and no remote rule registry is queried.",
