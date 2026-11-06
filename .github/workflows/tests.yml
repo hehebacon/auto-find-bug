@@ -35,7 +35,16 @@ jobs:
         run: python -m pip install -e ".[apk,sast]" build
       - name: Validate bundled Semgrep rules
         run: semgrep scan --validate --config src/auto_find_bug/rules/security.yml
+      - name: Download pinned Androguard APK integration fixture
+        run: |
+          mkdir -p .ci-fixtures
+          curl --fail --silent --show-error --location \
+            https://raw.githubusercontent.com/androguard/androguard/581f7a3251545a97f66ee92b674dd810ee380a00/tests/data/APK/TestActivity.apk \
+            --output .ci-fixtures/TestActivity.apk
+          test -s .ci-fixtures/TestActivity.apk
       - name: Run tests with optional engines installed
+        env:
+          AFB_APK_FIXTURE: .ci-fixtures/TestActivity.apk
         run: python -m unittest discover -s tests -v
       - name: Build wheel and verify bundled rules are packaged
         run: |
