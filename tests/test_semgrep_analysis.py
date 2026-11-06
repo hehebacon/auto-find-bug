@@ -1,4 +1,6 @@
+import json
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -29,11 +31,9 @@ class SemgrepAnalysisTests(unittest.TestCase):
             }],
             "errors": [],
         }
-        class Completed:
-            stdout = __import__("json").dumps(payload)
-            returncode = 0
+        completed = SimpleNamespace(stdout=json.dumps(payload), returncode=0)
         with patch.object(semgrep_analysis.shutil, "which", return_value="/usr/bin/semgrep"), patch.object(
-            semgrep_analysis.subprocess, "run", return_value=Completed()
+            semgrep_analysis.subprocess, "run", return_value=completed
         ):
             result = semgrep_analysis.analyze_with_semgrep(Path(__file__))
         finding = result["findings"][0]
