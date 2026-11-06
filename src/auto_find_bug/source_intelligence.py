@@ -171,6 +171,7 @@ def analyze_source(path: str | Path) -> dict[str, Any]:
     result["findings"].extend(flows["findings"])
     result["finding_count"] = len(result["findings"])
     result["flow_analysis"] = {"engine": flows["engine"], "files_analyzed": flows["files_analyzed"], "finding_count": flows["finding_count"], "limitations": flows["limitations"]}
+    result["limitations"].extend(flows["limitations"])
     result["source_type"] = "source_code"
     return result
 
