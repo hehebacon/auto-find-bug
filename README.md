@@ -142,7 +142,7 @@ auto-find-bug web-audit https://your-authorized-site.example/ --confirm-authoriz
 
 ## Source Intelligence
 
-Version 0.8.0 adds tested optional bundled-rule Semgrep taint analysis across Python, JavaScript/TypeScript, Java, and PHP; same-file Python authorization helper tracing; bounded Androguard DEX call-graph summaries; and anti-bot/access-gate detection that stops without evasion.
+Version 0.8.1 adds end-to-end APK and live OSV verification plus a labeled multi-language SAST regression benchmark across Python, JavaScript/TypeScript, Java, and PHP; same-file Python authorization helper tracing; bounded Androguard DEX call-graph summaries; and anti-bot/access-gate detection that stops without evasion.
 
 Commands:
 
@@ -183,7 +183,7 @@ Manual setup: `python -m venv .venv`, activate it, then `pip install -e .` and r
 
 Tests: `python -m unittest discover -s tests -v`
 
-CI runs the core suite on Python 3.11 and 3.12, then installs the optional APK/Semgrep engines, validates the bundled Semgrep rules, runs the integration smoke test, and verifies the wheel includes the rule file.
+CI runs the core suite on Python 3.11 and 3.12, installs the optional APK/Semgrep engines, validates the bundled rules, analyzes a pinned real APK with Androguard, queries the live OSV API for a known affected exact package version, runs the labeled four-language regression corpus, and verifies the built wheel includes the rule pack. The small synthetic SAST benchmark is a regression gate, not a representative real-world precision/recall measurement.
 
 ## Output
 
