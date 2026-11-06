@@ -291,7 +291,9 @@ def run_analysis(input_path: str | Path, workspace_path: str | Path | None = Non
         "# Source Intelligence Report", "",
         f"- Input: {source}", f"- Input type: {result.get('source_type', 'source_code')}",
         f"- New review leads: {len(incoming)}", f"- Dependencies inventoried: {dependencies['dependency_count']}",
-        f"- Online OSV correlation: {'enabled' if online else 'disabled'}", "",
+        f"- Online OSV correlation: {'enabled' if online else 'disabled'}",
+        f"- Python data-flow files: {result.get('flow_analysis', {}).get('files_analyzed', 0)}",
+        f"- Python data-flow review leads: {result.get('flow_analysis', {}).get('finding_count', 0)}", "",
         "## Findings", "",
     ]
     if not incoming:
@@ -303,8 +305,21 @@ def run_analysis(input_path: str | Path, workspace_path: str | Path | None = Non
             f"- Severity: {item.get('severity')}", f"- Location: {location}",
             f"- Evidence: {item.get('evidence')}", f"- Confidence: {item.get('confidence')}",
             f"- Recommendation: {item.get('recommendation')}",
-            f"- Advisory: {item.get('advisory_url', 'Not applicable')}", "",
+            f"- Advisory: {item.get('advisory_url', 'Not applicable')}",
+            f"- CWE: {item.get('cwe', 'Not mapped')}",
+            f"- Validation: {item.get('validation_status', 'not_validated')}",
+            f"- Impact assessment: {item.get('impact_assessment', 'requires_manual_review')}",
+            f"- Reproducibility: {item.get('reproducibility', 'not_attempted')}",
         ])
+        if item.get("flow"):
+            flow = item["flow"]
+            lines.extend([
+                f"- Data-flow source: {flow.get('source')} at line {flow.get('source_line')}",
+                f"- Data-flow sink: {flow.get('sink')} at line {flow.get('sink_line')}",
+                f"- Function: {flow.get('function', 'unknown')}",
+                f"- Trace: {' -> '.join(flow.get('trace', []))}",
+            ])
+        lines.append("")
     lines.extend(["## Limitations", ""])
     lines.extend(result.get("limitations", []))
     lines.extend([
