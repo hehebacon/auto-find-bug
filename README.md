@@ -142,7 +142,7 @@ auto-find-bug web-audit https://your-authorized-site.example/ --confirm-authoriz
 
 ## Source Intelligence
 
-Version 0.7.0 adds optional bundled-rule Semgrep taint analysis across Python, JavaScript/TypeScript, Java, and PHP; same-file Python authorization helper tracing; bounded Androguard DEX call-graph summaries; and anti-bot/access-gate detection that stops without evasion.
+Version 0.8.0 adds tested optional bundled-rule Semgrep taint analysis across Python, JavaScript/TypeScript, Java, and PHP; same-file Python authorization helper tracing; bounded Androguard DEX call-graph summaries; and anti-bot/access-gate detection that stops without evasion.
 
 Commands:
 
@@ -179,9 +179,11 @@ Results are saved under source-intelligence/, online-intelligence/, findings/fin
 
 Run: `bash run.sh`
 
-Manual setup: `python -m venv .venv`, activate it, then `pip install -e .` and run `auto-find-bug`. For optional binary AndroidManifest.xml decoding, install `pip install -e ".[apk]"  # Androguard 4.x compatibility range` (Androguard extra).
+Manual setup: `python -m venv .venv`, activate it, then `pip install -e .` and run `auto-find-bug`. For optional binary AndroidManifest.xml decoding and DEX call-graph inventory, install `pip install -e ".[apk]"` (Androguard 4.x compatibility range). For the optional local Semgrep engine, install `pip install -e ".[sast]"`; install both with `pip install -e ".[apk,sast]"`.
 
 Tests: `python -m unittest discover -s tests -v`
+
+CI runs the core suite on Python 3.11 and 3.12, then installs the optional APK/Semgrep engines, validates the bundled Semgrep rules, runs the integration smoke test, and verifies the wheel includes the rule file.
 
 ## Output
 
@@ -189,4 +191,4 @@ Each run creates a separate workspace under `tools/outdata/<program-handle>/<tim
 
 ## Status
 
-Implemented: policy extraction/manual import, read-only HackerOne public-scope snapshot import, heuristic policy analysis, local static source review, Python intraprocedural data-flow tracing, optional multi-language Semgrep taint rules, bounded Python helper-call authorization review, APK archive/manifest and optional DEX call-graph inventory, dependency lockfile inventory, OSV advisory correlation for exact versions, anti-bot/access-gate detection with safe stop behavior, evidence-rich report generation, workspace finding integration, and human triage. The tool does not perform active target checks or claim to discover unknown vulnerabilities. Policy completeness, authorization, and finding validation require human review.
+Implemented: policy extraction/manual import, read-only HackerOne public-scope snapshot import, heuristic policy analysis, local static source review, Python intraprocedural data-flow tracing, optional multi-language Semgrep taint rules, bounded Python helper-call authorization review, APK archive/manifest and optional DEX call-graph inventory, dependency lockfile inventory, OSV advisory correlation for exact versions, anti-bot/access-gate detection with safe stop behavior, evidence-rich report generation, workspace finding integration, and human triage. APK archives are bounded by compressed, per-entry, total-uncompressed, and manifest-size limits. Source and dependency crawlers skip symlinked files. The tool does not perform active target checks or claim to discover unknown vulnerabilities. Policy completeness, authorization, and finding validation require human review.
