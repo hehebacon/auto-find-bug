@@ -22,10 +22,14 @@ class SemgrepIntegrationTests(unittest.TestCase):
 
         self.assertTrue(result["available"])
         self.assertGreaterEqual(result["files_analyzed"], 1)
-        self.assertTrue(
-            any(item["rule_id"] == "auto-find-bug.python.request-to-shell" for item in result["findings"]),
-            msg=f"Expected bundled rule did not match. Full result: {result}",
+        finding = next(
+            (item for item in result["findings"] if item["rule_id"] == "auto-find-bug.python.request-to-shell"),
+            None,
         )
+        self.assertIsNotNone(finding, msg=f"Expected bundled rule did not match. Full result: {result}")
+        self.assertEqual(finding["file"], "app.py")
+        self.assertEqual(finding["line"], 4)
+        self.assertIn("os.system(value)", finding["evidence"])
 
 
 if __name__ == "__main__":
