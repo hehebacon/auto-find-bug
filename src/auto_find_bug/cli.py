@@ -370,7 +370,7 @@ def _web_audit_command(args: argparse.Namespace) -> int:
         output = web_audit.write_web_report(result, args.output, args.format)
         console.print(Panel(
             f"URL: {result['url']}\nHTTP status: {result['http_status']}\n"
-            f"Requests sent: {result['requests_sent']}\nFindings: {result['finding_count']}\nReport: {output}",
+            f"Requests sent: {result['requests_sent']}\nAccess state: {result.get('access_state', 'unknown')}\nAnti-bot signal: {result.get('anti_bot_detected', False)}\nFindings: {result['finding_count']}\nReport: {output}",
             title="PASSIVE WEB SECURITY REVIEW",
             border_style="cyan",
         ))
