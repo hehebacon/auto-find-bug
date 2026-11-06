@@ -22,6 +22,28 @@ def _scanned_count(value: Any) -> int:
     return 0
 
 
+def _source_location(target: Path, raw_path: Any, raw_line: Any, fallback: str) -> tuple[str, str]:
+    """Resolve a Semgrep match to a source file inside the requested scan root."""
+    if not isinstance(raw_path, str) or not raw_path:
+        return str(raw_path or ""), fallback
+    base = target if target.is_dir() else target.parent
+    candidate = Path(raw_path)
+    if not candidate.is_absolute():
+        candidate = base / candidate
+    try:
+        resolved_base = base.resolve()
+        resolved = candidate.resolve(strict=True)
+        if not resolved.is_relative_to(resolved_base) or not resolved.is_file():
+            return raw_path, fallback
+        relative = resolved.relative_to(resolved_base).as_posix()
+        line_number = int(raw_line)
+        lines = resolved.read_text(encoding="utf-8", errors="replace").splitlines()
+        evidence = lines[line_number - 1].strip()[:220] if 0 < line_number <= len(lines) else fallback
+        return relative, evidence
+    except (OSError, ValueError, TypeError):
+        return raw_path, fallback
+
+
 def _unavailable(note: str, *, available: bool = False) -> dict[str, Any]:
     return {
         "available": available,
@@ -102,14 +124,17 @@ def analyze_with_semgrep(path: str | Path) -> dict[str, Any]:
         # that packaging prefix while retaining the full language/rule ID.
         stable_rule_id = check_id.split(".rules.", 1)[-1]
         message = str(extra.get("message") or "Static taint-analysis candidate")
+        relative_file, source_evidence = _source_location(
+            target, match.get("path"), start.get("line"), str(extra.get("lines") or "").strip()[:220]
+        )
         findings.append({
             "rule_id": stable_rule_id,
             "engine_rule_id": check_id,
             "severity": severity,
             "title": message.splitlines()[0][:220],
-            "file": match.get("path"),
+            "file": relative_file,
             "line": start.get("line"),
-            "evidence": str(extra.get("lines") or "").strip()[:220],
+            "evidence": source_evidence,
             "recommendation": "Review the source-to-sink path, input control, sanitization, framework context, and safe parameterization before assigning impact.",
             "confidence": str(metadata.get("confidence") or "MEDIUM").lower(),
             "cwe": cwe,
