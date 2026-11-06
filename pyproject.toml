@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "auto-find-bug"
-version = "0.8.0"
+version = "0.8.1"
 description = "Scope-first Bug Bounty assistant with source/APK intelligence and public advisory correlation"
 readme = "README.md"
 requires-python = ">=3.11"
