@@ -195,9 +195,22 @@ def _merge_findings(workspace: Path, incoming: list[dict[str, Any]]) -> dict[str
         item.setdefault("validation_status", "not_validated")
         item.setdefault("impact_assessment", "requires_manual_review")
         item.setdefault("reproducibility", "not_attempted")
-        cwe_by_rule = {"FLOW-PY-001": "CWE-95", "FLOW-PY-002": "CWE-78", "FLOW-PY-003": "CWE-89", "FLOW-PY-004": "CWE-79", "ACCESS-PY-001": "CWE-862"}
-        if item.get("rule_id") in cwe_by_rule:
-            item.setdefault("cwe", cwe_by_rule[item["rule_id"]])
+        rule_context = {
+            "FLOW-PY-001": ("CWE-95", "Request-controlled data reaches dynamic code execution.", "If the input is attacker-controlled and reachable without a strict allowlist, code execution in the application context may be possible.", "Confirm input control, route reachability, and whether a safe parser or strict allowlist constrains the value."),
+            "FLOW-PY-002": ("CWE-78", "Request-controlled data reaches an operating-system command sink.", "If interpreted by a shell, command injection and unintended process actions may be possible.", "Confirm the subprocess API, shell mode, argument boundaries, and external controllability."),
+            "FLOW-PY-003": ("CWE-89", "Request-controlled data reaches a database query string.", "If the driver interprets the value as query syntax rather than a bound parameter, query manipulation or unauthorized data access may be possible.", "Confirm the database driver, query construction, parameter binding, and whether user input influences query text."),
+            "FLOW-PY-004": ("CWE-79", "Request-controlled data reaches a raw HTML rendering sink.", "If emitted into a browser context without contextual escaping, script injection may be possible.", "Confirm the rendered context, escaping behavior, content policy, and user control of the value."),
+            "ACCESS-PY-001": ("CWE-862", "A sensitive-looking route has no recognized local authorization marker.", "If externally reachable and no middleware or service-layer authorization exists, unauthorized actions or data access may be possible.", "Inspect router dependencies, global middleware, decorators, service-layer checks, object ownership, and role enforcement."),
+            "APK-CONFIG-001": ("CWE-489", "The APK manifest enables the debuggable application flag.", "In a release context this may expose debugging capabilities or diagnostic data; impact depends on build and deployment conditions.", "Confirm this is a production build and review the actual debug configuration and exposed data."),
+            "APK-NET-001": ("CWE-319", "The APK manifest permits cleartext network traffic.", "Sensitive traffic could be exposed or modified on an untrusted network if sent over cleartext channels.", "Confirm whether cleartext requests occur, what data they carry, and whether network security configuration narrows the exception."),
+            "APK-COMP-001": ("CWE-926", "An exported Android component has no component-level permission declared.", "Other applications may be able to invoke the component; impact depends on its actions, input validation, and application-level authorization.", "Confirm component reachability, intent filters, caller checks, data handled, and runtime protection."),
+        }
+        context = rule_context.get(item.get("rule_id"))
+        if context:
+            item.setdefault("cwe", context[0])
+            item.setdefault("root_cause", context[1])
+            item.setdefault("potential_impact", context[2])
+            item.setdefault("confirmation_conditions", context[3])
         identity = "|".join(str(item.get(key, "")) for key in ("rule_id", "file", "line", "component", "evidence", "advisory_id"))
         item["finding_id"] = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
         previous = existing.get(item["finding_id"], {})
@@ -308,6 +321,9 @@ def run_analysis(input_path: str | Path, workspace_path: str | Path | None = Non
             f"- Recommendation: {item.get('recommendation')}",
             f"- Advisory: {item.get('advisory_url', 'Not applicable')}",
             f"- CWE: {item.get('cwe', 'Not mapped')}",
+            f"- Root cause: {item.get('root_cause', 'Requires manual source review')}",
+            f"- Potential impact if confirmed: {item.get('potential_impact', 'Not assessed')}",
+            f"- Conditions to confirm: {item.get('confirmation_conditions', 'Review context and applicability')}",
             f"- Validation: {item.get('validation_status', 'not_validated')}",
             f"- Impact assessment: {item.get('impact_assessment', 'requires_manual_review')}",
             f"- Reproducibility: {item.get('reproducibility', 'not_attempted')}",
@@ -318,6 +334,8 @@ def run_analysis(input_path: str | Path, workspace_path: str | Path | None = Non
                 f"- Data-flow source: {flow.get('source')} at line {flow.get('source_line')}",
                 f"- Data-flow sink: {flow.get('sink')} at line {flow.get('sink_line')}",
                 f"- Function: {flow.get('function', 'unknown')}",
+                f"- Source evidence: {flow.get('source_evidence', 'Not captured')}",
+                f"- Variables: {', '.join(flow.get('variables', [])) or 'Direct flow'}",
                 f"- Trace: {' -> '.join(flow.get('trace', []))}",
             ])
         lines.append("")
