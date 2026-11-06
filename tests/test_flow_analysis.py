@@ -42,6 +42,36 @@ class FlowAnalysisTests(unittest.TestCase):
             result = analyze_python_flows(path)
         self.assertFalse(any(item["rule_id"] == "FLOW-PY-003" for item in result["findings"]))
 
+    def test_recognizes_direct_same_file_authorization_helper_call(self):
+        source = '''
+@app.route("/admin/delete")
+def delete_user():
+    ensure_permission()
+    return "ok"
+
+def ensure_permission():
+    authorize()
+'''
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "routes.py"
+            path.write_text(source, encoding="utf-8")
+            result = analyze_python_flows(path)
+        self.assertFalse(any(item["rule_id"] == "ACCESS-PY-001" for item in result["findings"]))
+
+    def test_reports_project_middleware_context_without_assuming_coverage(self):
+        source = '''
+MIDDLEWARE = ["AuthenticationMiddleware"]
+@app.route("/admin/delete")
+def delete_user():
+    return "ok"
+'''
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "routes.py"
+            path.write_text(source, encoding="utf-8")
+            result = analyze_python_flows(path)
+        finding = next(item for item in result["findings"] if item["rule_id"] == "ACCESS-PY-001")
+        self.assertIn("django_middleware", finding["project_auth_context"])
+
 
 if __name__ == "__main__":
     unittest.main()
