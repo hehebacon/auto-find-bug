@@ -51,6 +51,24 @@ jobs:
         run: |
           git clone --filter=blob:none --no-checkout https://github.com/OWASP-Benchmark/BenchmarkJava.git .ci-fixtures/BenchmarkJava
           git -C .ci-fixtures/BenchmarkJava checkout 0119da404a3418bc337beb529b72ae755f018f97
+      - name: Re-run pinned baseline rules and retain complete baseline case lists
+        run: |
+          git show babb601e5afb39d166e00a47caa4d18e59b56be0:src/auto_find_bug/rules/security.yml > .ci-fixtures/baseline-security.yml
+          semgrep scan --config .ci-fixtures/baseline-security.yml --json --metrics=off --quiet --jobs 1 --no-git-ignore .ci-fixtures/BenchmarkJava/src/main/java/org/owasp/benchmark/testcode > .ci-fixtures/owasp-baseline-semgrep.json
+          python benchmarks/score_owasp_benchmark.py \
+            --expected .ci-fixtures/BenchmarkJava/expectedresults-1.2.csv \
+            --semgrep-json .ci-fixtures/owasp-baseline-semgrep.json \
+            --benchmark-commit 0119da404a3418bc337beb529b72ae755f018f97 \
+            --output .ci-fixtures/owasp-baseline-scorecard.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          expected = json.loads(Path('benchmarks/owasp-java-v1.2-baseline.json').read_text())['overall_scored_subset']
+          actual = json.loads(Path('.ci-fixtures/owasp-baseline-scorecard.json').read_text())['overall_scored_subset']
+          keys = ('tp', 'fp', 'fn', 'tn', 'precision', 'recall', 'false_positive_rate')
+          assert all(actual[key] == expected[key] for key in keys), (expected, actual)
+          print('Pinned baseline rules reproduce the recorded confusion matrix.')
+          PY
       - name: Run full OWASP Benchmark Java static scorecard
         run: |
           semgrep scan --config src/auto_find_bug/rules/security.yml --json --metrics=off --quiet --jobs 1 --no-git-ignore .ci-fixtures/BenchmarkJava/src/main/java/org/owasp/benchmark/testcode > .ci-fixtures/owasp-semgrep.json
@@ -64,7 +82,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: auto-find-bug-owasp-benchmark-scorecard
-          path: .ci-fixtures/owasp-scorecard.json
+          path: |
+            .ci-fixtures/owasp-scorecard.json
+            .ci-fixtures/owasp-baseline-scorecard.json
       - name: Build wheel and verify bundled rules are packaged
         run: |
           python -m build
