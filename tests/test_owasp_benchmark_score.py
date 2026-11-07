@@ -41,6 +41,8 @@ class OwaspScoreTests(unittest.TestCase):
         self.assertEqual(report["overall_scored_subset"]["tn"], 1)
         self.assertEqual(report["not_scanned_cases"], 0)
         self.assertNotIn("79", report["categories"])
+        self.assertEqual(report["categories"]["78"]["false_positive_cases"], ["BenchmarkTest00002"])
+        self.assertEqual(report["categories"]["89"]["detected_cases"], ["BenchmarkTest00003"])
 
     def test_comparison_reports_all_confusion_matrix_and_rate_deltas(self):
         with tempfile.TemporaryDirectory() as tmp:
