@@ -215,6 +215,55 @@ class JavaFlowAnalyzer:
         elif name == "ArraySelector":
             pass
 
+    def _apply_selectors(self, node: Any, base: JValue, state: JState, rel: str, depth: int, receiver_label: str) -> JValue:
+        for selector in getattr(node, "selectors", None) or []:
+            selector_name = type(selector).__name__
+            if selector_name == "ArraySelector":
+                index = self.expr(getattr(selector, "index", None), state, rel, depth).constant
+                if base.items is not None and isinstance(index, int) and -len(base.items) <= index < len(base.items):
+                    base = base.items[index].clone()
+                elif base.tainted:
+                    base = JValue(True, base.origins, base.trace)
+                else:
+                    base = JValue()
+            elif selector_name == "MethodInvocation":
+                member = self._member(selector)
+                args = [self.expr(arg, state, rel, depth) for arg in (getattr(selector, "arguments", None) or [])]
+                if member in SQL_SINKS:
+                    receiver = receiver_label.lower()
+                    generic = any(token in receiver for token in ("stmt", "statement", "jdbc", "query", "entitymanager", "session", "connection", "conn", "database", "db"))
+                    strong = member in {"executeQuery", "executeUpdate", "prepareStatement", "prepareCall", "createNativeQuery", "queryForObject", "queryForList", "queryForMap", "queryForRowSet"}
+                    if strong or generic:
+                        value = args[0] if args else base
+                        if value.tainted: self._record("FLOW-JAVA-001", rel, selector, f"{receiver_label}.{member}", value)
+                        base = JValue()
+                elif member == "exec" and any(token in receiver_label.lower() for token in ("runtime", "process")):
+                    value = args[0] if args else base
+                    if value.tainted: self._record("FLOW-JAVA-002", rel, selector, f"{receiver_label}.{member}", value)
+                    base = JValue()
+                elif member == "start" and base.tainted:
+                    self._record("FLOW-JAVA-002", rel, selector, f"{receiver_label}.start", base)
+                    base = JValue()
+                elif member == "get":
+                    key = args[0].constant if args else UNKNOWN
+                    if base.mapping is not None and key is not UNKNOWN:
+                        base = base.mapping.get(str(key), base.mapping.get("*", JValue())).clone()
+                    elif base.items is not None and isinstance(key, int) and -len(base.items) <= key < len(base.items):
+                        base = base.items[key].clone()
+                    elif base.tainted:
+                        base = JValue(True, base.origins, base.trace)
+                    elif len(args) > 1:
+                        base = args[1].clone()
+                    else:
+                        base = JValue()
+                elif member == "command":
+                    incoming = self._join(args)
+                    if incoming.tainted:
+                        base = JValue(True, incoming.origins, (*incoming.trace, f"{rel}:{_node_line(selector)} propagation -> ProcessBuilder.command"))
+                else:
+                    base = self._join([base, *args])
+        return base
+
     def _collection_call(self, node: Any, state: JState, rel: str, depth: int) -> JValue | None:
         member = self._member(node)
         receiver = self._qualifier(node)
@@ -355,22 +404,24 @@ class JavaFlowAnalyzer:
             type_name = str(getattr(node, "type", ""))
             value = self._join(args)
             if "ProcessBuilder" in type_name and value.tainted:
-                return JValue(True, value.origins, (*value.trace, f"{rel}:{_node_line(node)} propagation -> ProcessBuilder"))
-            return value
+                value = JValue(True, value.origins, (*value.trace, f"{rel}:{_node_line(node)} propagation -> ProcessBuilder"))
+            return self._apply_selectors(node, value, state, rel, depth, type_name)
         if name == "MethodInvocation":
             member = self._member(node)
             receiver = self._qualifier(node)
             args_nodes = getattr(node, "arguments", None) or []
             args = [self.expr(arg, state, rel, depth) for arg in args_nodes]
             if member in SOURCE_METHODS and any(x in receiver.lower() for x in ("request", "req")):
-                return self._source(rel, node, f"{receiver}.{member}")
+                value = self._source(rel, node, f"{receiver}.{member}")
+                return self._apply_selectors(node, value, state, rel, depth, f"{receiver}.{member}")
             if member == "asList" and "Arrays" in receiver:
                 return JValue(any(v.tainted for v in args),
                               tuple(dict.fromkeys(o for v in args for o in v.origins)),
                               tuple(dict.fromkeys(t for v in args for t in v.trace)),
                               items=[v.clone() for v in args])
             if member == "getValue" and "cookie" in receiver.lower():
-                return self._source(rel, node, f"{receiver}.getValue")
+                value = self._source(rel, node, f"{receiver}.getValue")
+                return self._apply_selectors(node, value, state, rel, depth, f"{receiver}.getValue")
             if member == "nextElement" and receiver in state.env and state.env[receiver].tainted:
                 return JValue(True, state.env[receiver].origins, state.env[receiver].trace)
             collection_value = self._collection_call(node, state, rel, depth)
@@ -419,8 +470,9 @@ class JavaFlowAnalyzer:
                     self.call_stack.append(identity)
                     self.block(method.body or [], local, helper_rel, depth + 1)
                     self.call_stack.pop()
-                    return (local.returned or JValue()).clone()
-            return self._join(args)
+                    returned = (local.returned or JValue()).clone()
+                    return self._apply_selectors(node, returned, state, rel, depth, f"{receiver}.{member}")
+            return self._apply_selectors(node, self._join(args), state, rel, depth, f"{receiver}.{member}")
         if name == "This":
             return JValue()
         return JValue()
