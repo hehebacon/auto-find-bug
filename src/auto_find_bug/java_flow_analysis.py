@@ -446,6 +446,11 @@ class JavaFlowAnalyzer:
             args = [self.expr(arg, state, rel, depth) for arg in args_nodes]
             # Fold deterministic String operations used by branch/switch guards.
             receiver_value = state.env.get(receiver, JValue()) if receiver else JValue()
+            if receiver and receiver_value.constant is UNKNOWN:
+                try:
+                    receiver_value = JValue(constant=py_ast.literal_eval(receiver))
+                except (ValueError, SyntaxError):
+                    pass
             if receiver_value.constant is not UNKNOWN:
                 try:
                     if member == "charAt" and args and isinstance(args[0].constant, int):
