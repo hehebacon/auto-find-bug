@@ -1,0 +1,522 @@
+from __future__ import annotations
+
+"""Bounded Java source-to-sink analysis using javalang ASTs.
+
+This is a local static review engine. It does not execute project code. Unknown
+branches are joined conservatively; unresolved dispatch is not guessed.
+"""
+
+import ast as py_ast
+import copy
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+UNKNOWN = object()
+MAX_FILES = 5000
+MAX_FILE_BYTES = 1_000_000
+MAX_CALL_DEPTH = 8
+MAX_STEPS = 100_000
+
+SQL_SINKS = {
+    "executeQuery", "executeUpdate", "execute", "prepareStatement", "prepareCall",
+    "queryForObject", "queryForList", "queryForMap", "queryForRowSet", "query",
+    "update", "batchUpdate", "createNativeQuery",
+}
+COMMAND_SINKS = {"exec"}
+SOURCE_METHODS = {
+    "getParameter", "getParameterValues", "getHeader", "getHeaders",
+    "getQueryString", "getParameterMap", "getParameterNames",
+}
+
+
+@dataclass
+class JValue:
+    tainted: bool = False
+    origins: tuple[tuple[str, int, str], ...] = ()
+    trace: tuple[str, ...] = ()
+    constant: Any = UNKNOWN
+    items: list["JValue"] | None = None
+    mapping: dict[str, "JValue"] | None = None
+
+    def clone(self) -> "JValue":
+        return copy.deepcopy(self)
+
+
+@dataclass
+class JState:
+    env: dict[str, JValue] = field(default_factory=dict)
+    returned: JValue | None = None
+    terminated: bool = False
+
+
+def _merge_value(a: JValue, b: JValue) -> JValue:
+    origins = tuple(dict.fromkeys((*a.origins, *b.origins)))
+    trace = tuple(dict.fromkeys((*a.trace, *b.trace)))
+    constant = a.constant if a.constant is not UNKNOWN and a.constant == b.constant else UNKNOWN
+    items = None
+    if a.items is not None and b.items is not None and len(a.items) == len(b.items):
+        items = [_merge_value(x, y) for x, y in zip(a.items, b.items)]
+    mapping = None
+    if a.mapping is not None and b.mapping is not None:
+        mapping = {
+            key: _merge_value(a.mapping.get(key, JValue()), b.mapping.get(key, JValue()))
+            for key in set(a.mapping) | set(b.mapping)
+        }
+    return JValue(a.tainted or b.tainted, origins, trace, constant, items, mapping)
+
+
+def _merge_states(states: list[JState]) -> JState:
+    keys = set().union(*(s.env for s in states)) if states else set()
+    env = {}
+    for key in keys:
+        values = [s.env.get(key, JValue()) for s in states]
+        value = values[0].clone()
+        for other in values[1:]:
+            value = _merge_value(value, other)
+        env[key] = value
+    return JState(env=env, terminated=bool(states) and all(s.terminated for s in states))
+
+
+def _node_line(node: Any) -> int:
+    position = getattr(node, "position", None)
+    return int(getattr(position, "line", 1) or 1)
+
+
+class JavaFlowAnalyzer:
+    def __init__(self, root: Path, files: list[Path]):
+        try:
+            import javalang
+        except ImportError as exc:
+            raise RuntimeError("Install the optional Java parser with the SAST extra.") from exc
+        self.javalang = javalang
+        self.root = root
+        self.files = files
+        self.sources: dict[str, list[str]] = {}
+        self.methods: dict[str, list[tuple[str, Any]]] = {}
+        self.trees: list[tuple[str, Any]] = []
+        self.findings: dict[tuple[str, str, int, int, int], dict[str, Any]] = {}
+        self.steps = 0
+        self.call_stack: list[str] = []
+        for path in files:
+            try:
+                source = path.read_text(encoding="utf-8", errors="replace")
+                tree = javalang.parse.parse(source)
+            except (OSError, self.javalang.parser.JavaSyntaxError, TypeError):
+                continue
+            rel = path.relative_to(root).as_posix() if root.is_dir() else path.name
+            self.sources[rel] = source.splitlines()
+            self.trees.append((rel, tree))
+            for _, node in tree.filter(self.javalang.tree.MethodDeclaration):
+                self.methods.setdefault(node.name, []).append((rel, node))
+
+    @staticmethod
+    def _const(node: Any) -> Any:
+        if node is None:
+            return UNKNOWN
+        name = type(node).__name__
+        if name == "Literal":
+            raw = str(getattr(node, "value", ""))
+            if raw in {"true", "false"}: return raw == "true"
+            if raw == "null": return None
+            try: return py_ast.literal_eval(raw)
+            except Exception:
+                try: return int(raw, 0)
+                except Exception: return UNKNOWN
+        return UNKNOWN
+
+    @staticmethod
+    def _qualifier(node: Any) -> str:
+        return str(getattr(node, "qualifier", "") or "")
+
+    @staticmethod
+    def _member(node: Any) -> str:
+        return str(getattr(node, "member", "") or "")
+
+    def _source(self, rel: str, node: Any, label: str) -> JValue:
+        line = _node_line(node)
+        return JValue(True, ((rel, line, label),), (f"{rel}:{line} source {label}",))
+
+    def _record(self, rule: str, rel: str, node: Any, sink: str, value: JValue) -> None:
+        if not value.tainted or not value.origins:
+            return
+        line = _node_line(node)
+        sink_lines = self.sources.get(rel, [])
+        evidence = sink_lines[line - 1].strip()[:220] if 0 < line <= len(sink_lines) else sink
+        for source_file, source_line, source_name in value.origins:
+            key = (rule, rel, line, source_file, source_line)
+            source_lines = self.sources.get(source_file, [])
+            source_evidence = source_lines[source_line - 1].strip()[:220] if 0 < source_line <= len(source_lines) else source_name
+            trace = [*value.trace, f"{rel}:{line} sink {sink}"]
+            self.findings[key] = {
+                "rule_id": rule,
+                "severity": "HIGH",
+                "title": "Request-controlled data reaches a SQL query sink" if rule == "FLOW-JAVA-001" else "Request-controlled data reaches process execution",
+                "file": rel,
+                "line": line,
+                "evidence": evidence,
+                "recommendation": "Review the complete source-to-sink path, branch feasibility, collection state, helper return value, and API semantics before confirming impact.",
+                "confidence": "medium",
+                "flow": {
+                    "source": source_name,
+                    "source_file": source_file,
+                    "source_line": source_line,
+                    "source_evidence": source_evidence,
+                    "sink": sink,
+                    "sink_line": line,
+                    "function": self.call_stack[-1] if self.call_stack else "<class>",
+                    "variables": [x.split("->", 1)[1].strip() for x in trace if "propagation ->" in x],
+                    "trace": trace[-30:],
+                },
+            }
+
+    def _join(self, values: list[JValue]) -> JValue:
+        if not values: return JValue()
+        result = values[0].clone()
+        for item in values[1:]: result = _merge_value(result, item)
+        return result
+
+    def _truth(self, node: Any, state: JState, rel: str, depth: int) -> bool | None:
+        value = self.expr(node, state, rel, depth)
+        if value.constant is not UNKNOWN:
+            try: return bool(value.constant)
+            except Exception: return None
+        return None
+
+    def _assign(self, target: Any, value: JValue, state: JState, rel: str) -> None:
+        name = type(target).__name__
+        if name == "MemberReference":
+            variable = self._member(target)
+            assigned = value.clone()
+            if assigned.tainted:
+                assigned.trace = (*assigned.trace, f"{rel}:{_node_line(target)} propagation -> {variable}")
+            state.env[variable] = assigned
+            selectors = getattr(target, "selectors", None) or []
+            for selector in selectors:
+                if type(selector).__name__ == "ArraySelector":
+                    key = self.expr(getattr(selector, "index", None), state, rel, 0).constant
+                    current = state.env[variable].clone()
+                    if current.items is not None and isinstance(key, int) and -len(current.items) <= key < len(current.items):
+                        current.items[key] = value.clone()
+                    state.env[variable] = current
+        elif name == "ArraySelector":
+            pass
+
+    def _collection_call(self, node: Any, state: JState, rel: str, depth: int) -> JValue | None:
+        member = self._member(node)
+        receiver = self._qualifier(node)
+        if not receiver or receiver not in state.env:
+            return None
+        current = state.env[receiver].clone()
+        args = [self.expr(arg, state, rel, depth) for arg in (getattr(node, "arguments", None) or [])]
+        raw_args = getattr(node, "arguments", None) or []
+        if member in {"add", "addElement"} and current.items is not None and args:
+            current.items.append(args[-1].clone())
+        elif member == "add" and current.items is None:
+            current.items = [args[-1].clone()] if args else []
+        elif member in {"put", "putIfAbsent"} and args:
+            if current.mapping is None: current.mapping = {}
+            key = args[0].constant
+            current.mapping[str(key) if key is not UNKNOWN else "*"] = args[1].clone() if len(args) > 1 else JValue()
+        elif member in {"get", "elementAt"}:
+            if current.items is not None and args and isinstance(args[0].constant, int):
+                index = args[0].constant
+                if -len(current.items) <= index < len(current.items): return current.items[index].clone()
+            if current.mapping is not None and args:
+                key = args[0].constant
+                found = current.mapping.get(str(key)) if key is not UNKNOWN else None
+                if found is not None: return found.clone()
+                if "*" in current.mapping: return current.mapping["*"].clone()
+            if current.tainted: return JValue(True, current.origins, current.trace)
+            return JValue()
+        elif member in {"remove", "removeElementAt"}:
+            if current.items is not None and args:
+                index = args[0].constant
+                if isinstance(index, int) and -len(current.items) <= index < len(current.items):
+                    removed = current.items.pop(index)
+                    state.env[receiver] = current
+                    return removed
+                if args[0].constant is not UNKNOWN:
+                    current.items = [v for v in current.items if v.constant != args[0].constant]
+            elif current.mapping is not None and args and args[0].constant is not UNKNOWN:
+                current.mapping.pop(str(args[0].constant), None)
+        elif member == "clear":
+            if current.items is not None: current.items.clear()
+            if current.mapping is not None: current.mapping.clear()
+        elif member == "set":
+            if current.items is not None and len(args) >= 2 and isinstance(args[0].constant, int):
+                index = args[0].constant
+                if -len(current.items) <= index < len(current.items): current.items[index] = args[1].clone()
+        elif member == "putAll" and args and args[0].mapping is not None:
+            if current.mapping is None: current.mapping = {}
+            current.mapping.update(copy.deepcopy(args[0].mapping))
+        else:
+            return None
+        all_values = (current.items or []) + (list(current.mapping.values()) if current.mapping else [])
+        current.tainted = any(v.tainted for v in all_values)
+        current.origins = tuple(dict.fromkeys(o for v in all_values for o in v.origins))
+        current.trace = tuple(dict.fromkeys(t for v in all_values for t in v.trace))
+        state.env[receiver] = current
+        return JValue()
+
+    def expr(self, node: Any, state: JState, rel: str, depth: int = 0) -> JValue:
+        if node is None: return JValue()
+        name = type(node).__name__
+        if name == "Literal":
+            return JValue(constant=self._const(node))
+        if name == "MemberReference":
+            value = state.env.get(self._member(node), JValue()).clone()
+            selectors = getattr(node, "selectors", None) or []
+            for selector in selectors:
+                if type(selector).__name__ == "ArraySelector":
+                    index = self.expr(getattr(selector, "index", None), state, rel, depth).constant
+                    if value.items is not None and isinstance(index, int) and -len(value.items) <= index < len(value.items):
+                        value = value.items[index].clone()
+                    elif value.tainted:
+                        value = JValue(True, value.origins, value.trace)
+                    else:
+                        value = JValue()
+            return value
+        if name in {"ArrayInitializer", "ArrayCreator"}:
+            raw = getattr(node, "initializers", None)
+            if raw is None:
+                raw = getattr(node, "dimensions", None)
+            values = [self.expr(x, state, rel, depth) for x in (raw or [])]
+            return JValue(any(v.tainted for v in values),
+                          tuple(dict.fromkeys(o for v in values for o in v.origins)),
+                          tuple(dict.fromkeys(t for v in values for t in v.trace)),
+                          items=values)
+        if name == "Cast":
+            return self.expr(getattr(node, "expression", None), state, rel, depth)
+        if name == "BinaryOperation":
+            left = self.expr(node.operandl, state, rel, depth)
+            right = self.expr(node.operandr, state, rel, depth)
+            constant = UNKNOWN
+            if left.constant is not UNKNOWN and right.constant is not UNKNOWN:
+                try:
+                    op = node.operator
+                    if op == "+": constant = left.constant + right.constant
+                    elif op == "-": constant = left.constant - right.constant
+                    elif op == "*": constant = left.constant * right.constant
+                    elif op == "/": constant = left.constant / right.constant
+                    elif op == "%": constant = left.constant % right.constant
+                    elif op == "==": constant = left.constant == right.constant
+                    elif op == "!=": constant = left.constant != right.constant
+                    elif op == "<": constant = left.constant < right.constant
+                    elif op == "<=": constant = left.constant <= right.constant
+                    elif op == ">": constant = left.constant > right.constant
+                    elif op == ">=": constant = left.constant >= right.constant
+                    elif op == "&&": constant = bool(left.constant) and bool(right.constant)
+                    elif op == "||": constant = bool(left.constant) or bool(right.constant)
+                except Exception:
+                    pass
+            return JValue(left.tainted or right.tainted,
+                          tuple(dict.fromkeys((*left.origins, *right.origins))),
+                          tuple(dict.fromkeys((*left.trace, *right.trace))), constant)
+        if name == "TernaryExpression":
+            truth = self._truth(node.condition, state, rel, depth)
+            if truth is True: return self.expr(node.if_true, state, rel, depth)
+            if truth is False: return self.expr(node.if_false, state, rel, depth)
+            return self._join([self.expr(node.if_true, state, rel, depth), self.expr(node.if_false, state, rel, depth)])
+        if name == "Assignment":
+            value = self.expr(node.value, state, rel, depth)
+            self._assign(node.expressionl, value, state, rel)
+            return value
+        if name == "ClassCreator":
+            args = [self.expr(x, state, rel, depth) for x in (getattr(node, "arguments", None) or [])]
+            type_name = str(getattr(node, "type", ""))
+            value = self._join(args)
+            if "ProcessBuilder" in type_name and value.tainted:
+                return JValue(True, value.origins, (*value.trace, f"{rel}:{_node_line(node)} propagation -> ProcessBuilder"))
+            return value
+        if name == "MethodInvocation":
+            member = self._member(node)
+            receiver = self._qualifier(node)
+            args_nodes = getattr(node, "arguments", None) or []
+            args = [self.expr(arg, state, rel, depth) for arg in args_nodes]
+            if member in SOURCE_METHODS and any(x in receiver.lower() for x in ("request", "req")):
+                return self._source(rel, node, f"{receiver}.{member}")
+            if member == "getValue" and "cookie" in receiver.lower():
+                return self._source(rel, node, f"{receiver}.getValue")
+            if member == "nextElement" and receiver in state.env and state.env[receiver].tainted:
+                return JValue(True, state.env[receiver].origins, state.env[receiver].trace)
+            collection_value = self._collection_call(node, state, rel, depth)
+            if collection_value is not None: return collection_value
+            if member in SQL_SINKS:
+                val = args[0] if args else JValue()
+                if val.tainted: self._record("FLOW-JAVA-001", rel, node, f"{receiver}.{member}", val)
+                return JValue()
+            if member in COMMAND_SINKS:
+                val = args[0] if args else JValue()
+                if val.tainted: self._record("FLOW-JAVA-002", rel, node, f"{receiver}.{member}", val)
+                return JValue()
+            if member == "command" and receiver in state.env:
+                current = state.env[receiver].clone()
+                val = self._join(args)
+                if val.tainted:
+                    current.tainted, current.origins = True, val.origins
+                    current.trace = (*val.trace, f"{rel}:{_node_line(node)} propagation -> {receiver}.command")
+                state.env[receiver] = current
+                return JValue()
+            if member == "start" and receiver in state.env:
+                val = state.env[receiver]
+                if val.tainted: self._record("FLOW-JAVA-002", rel, node, f"{receiver}.start", val)
+                return JValue()
+            candidates = self.methods.get(member, [])
+            if len(candidates) == 1 and depth < MAX_CALL_DEPTH:
+                helper_rel, method = candidates[0]
+                identity = f"{helper_rel}:{member}"
+                if identity not in self.call_stack:
+                    local = JState()
+                    for param, arg in zip(method.parameters or [], args):
+                        bound = arg.clone()
+                        if bound.tainted:
+                            bound.trace = (*bound.trace, f"{rel}:{_node_line(node)} propagation call {member} -> {param.name}")
+                        local.env[param.name] = bound
+                    self.call_stack.append(identity)
+                    self.block(method.body or [], local, helper_rel, depth + 1)
+                    self.call_stack.pop()
+                    return (local.returned or JValue()).clone()
+            return self._join(args)
+        if name == "This":
+            return JValue()
+        return JValue()
+
+    def statement(self, stmt: Any, state: JState, rel: str, depth: int) -> None:
+        name = type(stmt).__name__
+        if name == "BlockStatement":
+            self.block(stmt.statements or [], state, rel, depth)
+        elif name == "LocalVariableDeclaration":
+            for declarator in stmt.declarators or []:
+                value = self.expr(declarator.initializer, state, rel, depth)
+                if value.tainted:
+                    value.trace = (*value.trace, f"{rel}:{_node_line(declarator)} propagation -> {declarator.name}")
+                state.env[declarator.name] = value.clone()
+        elif name == "StatementExpression":
+            self.expr(stmt.expression, state, rel, depth)
+        elif name == "IfStatement":
+            truth = self._truth(stmt.condition, state, rel, depth)
+            if truth is True: self.statement(stmt.then_statement, state, rel, depth)
+            elif truth is False:
+                if stmt.else_statement: self.statement(stmt.else_statement, state, rel, depth)
+            else:
+                left = JState(copy.deepcopy(state.env))
+                right = JState(copy.deepcopy(state.env))
+                self.statement(stmt.then_statement, left, rel, depth)
+                if stmt.else_statement: self.statement(stmt.else_statement, right, rel, depth)
+                merged = _merge_states([left, right])
+                state.env = merged.env
+        elif name == "ReturnStatement":
+            state.returned = self.expr(stmt.expression, state, rel, depth)
+            state.terminated = True
+        elif name in {"WhileStatement", "DoStatement"}:
+            truth = self._truth(stmt.condition, state, rel, depth)
+            if truth is False: return
+            before = JState(copy.deepcopy(state.env))
+            loop = JState(copy.deepcopy(state.env))
+            self.statement(stmt.body, loop, rel, depth)
+            state.env = _merge_states([before, loop]).env
+        elif name == "ForStatement":
+            before = JState(copy.deepcopy(state.env))
+            loop = JState(copy.deepcopy(state.env))
+            control = getattr(stmt, "control", None)
+            if type(control).__name__ == "EnhancedForControl":
+                iterable = self.expr(control.iterable, state, rel, depth)
+                var = getattr(control.var, "declarators", None) or []
+                if var:
+                    loop.env[var[0].name] = (iterable.items[0].clone() if iterable.items else JValue(iterable.tainted, iterable.origins, iterable.trace))
+            elif type(control).__name__ == "ForControl":
+                init = getattr(control, "init", None)
+                for item in init or []: self.statement(item, loop, rel, depth)
+            self.statement(stmt.body, loop, rel, depth)
+            state.env = _merge_states([before, loop]).env
+        elif name == "SwitchStatement":
+            selector = self.expr(stmt.expression, state, rel, depth)
+            cases = stmt.cases or []
+            selected = None
+            if selector.constant is not UNKNOWN:
+                for case in cases:
+                    labels = [self._const(x) for x in (case.case or [])]
+                    if selector.constant in labels or not labels:
+                        selected = case
+                        break
+            if selected is not None:
+                for item in selected.statements or []: self.statement(item, state, rel, depth)
+            else:
+                branches = []
+                for case in cases:
+                    branch = JState(copy.deepcopy(state.env))
+                    for item in case.statements or []: self.statement(item, branch, rel, depth)
+                    branches.append(branch)
+                if branches: state.env = _merge_states(branches).env
+        elif name == "TryStatement":
+            branches = []
+            normal = JState(copy.deepcopy(state.env))
+            self.block(stmt.block or [], normal, rel, depth)
+            branches.append(normal)
+            for catch in stmt.catches or []:
+                branch = JState(copy.deepcopy(state.env))
+                self.block(catch.block or [], branch, rel, depth)
+                branches.append(branch)
+            state.env = _merge_states(branches).env
+            self.block(stmt.finally_block or [], state, rel, depth)
+        elif name == "ThrowStatement":
+            state.terminated = True
+
+    def block(self, statements: list[Any], state: JState, rel: str, depth: int) -> None:
+        for stmt in statements:
+            self.steps += 1
+            if self.steps > MAX_STEPS or state.terminated: break
+            self.statement(stmt, state, rel, depth)
+
+    def run(self) -> list[dict[str, Any]]:
+        for rel, tree in self.trees:
+            for _, method in tree.filter(self.javalang.tree.MethodDeclaration):
+                self.call_stack = [f"{rel}:{method.name}"]
+                state = JState()
+                for param in method.parameters or []:
+                    state.env[param.name] = JValue()
+                self.block(method.body or [], state, rel, 0)
+                self.call_stack = []
+        return list(self.findings.values())
+
+
+def analyze_java_flows(root: str | Path) -> dict[str, Any]:
+    base = Path(root).expanduser().resolve()
+    if not base.exists(): raise ValueError("Provide an existing source file or directory.")
+    if base.is_file():
+        files = [base] if base.suffix.lower() == ".java" else []
+        root_dir = base.parent
+    else:
+        root_dir = base
+        ignored = {".git", ".venv", "venv", "node_modules", "target", "build", "dist", "__pycache__"}
+        files = []
+        for path in base.rglob("*.java"):
+            if path.is_symlink() or not path.is_file() or any(part in ignored for part in path.relative_to(base).parts):
+                continue
+            try:
+                if path.stat().st_size <= MAX_FILE_BYTES: files.append(path)
+            except OSError:
+                continue
+            if len(files) >= MAX_FILES: break
+    try:
+        analyzer = JavaFlowAnalyzer(root_dir, files)
+    except RuntimeError as exc:
+        return {"available": False, "engine": "java-ast-flow-v1", "files_analyzed": 0, "finding_count": 0,
+                "findings": [], "note": str(exc), "limitations": ["Java AST engine is optional; install the SAST extra."]}
+    findings = analyzer.run()
+    return {
+        "available": True,
+        "engine": "java-ast-flow-v1",
+        "files_analyzed": len(analyzer.sources),
+        "finding_count": len(findings),
+        "findings": findings,
+        "note": "Java findings are retained only when the bounded AST model traces a recognized request source through assignments, supported collection state or a uniquely resolved helper to a recognized sink.",
+        "limitations": [
+            "Constant branch evaluation supports a bounded subset of literals and arithmetic/comparison expressions; unknown branches are conservatively joined.",
+            "List, Map, and array tracking covers literal contents and selected add/put/get/remove/clear/set operations; aliases, custom collections, streams, iterators and complex key expressions remain incomplete.",
+            "Helper calls require a unique statically named method in the scanned project and bounded call depth; overloads, dynamic dispatch, reflection, imported library behavior and receiver-state semantics are not fully modeled.",
+            "The Java parser may reject newer or nonstandard language syntax; unparsed files are not counted as analyzed.",
+            "No source is executed; findings are review leads, not proof of runtime reachability or exploitability.",
+        ],
+    }
