@@ -474,7 +474,7 @@ class JavaFlowAnalyzer:
                 value = self._source(rel, node, f"{receiver}.getValue")
                 return self._apply_selectors(node, value, state, rel, depth, f"{receiver}.getValue")
             if receiver in state.env and member in {
-                "toString", "concat", "substring", "subSequence", "replace",
+                "toString", "concat", "substring", "subSequence",
                 "replaceAll", "replaceFirst", "toLowerCase", "toUpperCase",
                 "trim", "strip", "split", "getBytes", "toCharArray",
             }:
