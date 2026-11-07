@@ -457,6 +457,14 @@ class JavaFlowAnalyzer:
                     receiver_value = JValue(constant=py_ast.literal_eval(receiver))
                 except (ValueError, SyntaxError):
                     pass
+            if member == "equals" and receiver:
+                # equals() returns a boolean, not its argument. If the compared
+                # values are not both constants, keep the branch unknown so both
+                # paths are joined instead of treating the literal argument as
+                # the truth value of the condition.
+                if receiver_value.constant is not UNKNOWN and args and args[0].constant is not UNKNOWN:
+                    return JValue(constant=receiver_value.constant == args[0].constant)
+                return JValue()
             if receiver_value.constant is not UNKNOWN:
                 try:
                     if member == "charAt" and args and isinstance(args[0].constant, int):
@@ -606,24 +614,45 @@ class JavaFlowAnalyzer:
         elif name in {"WhileStatement", "DoStatement"}:
             truth = self._truth(stmt.condition, state, rel, depth)
             if truth is False: return
-            before = JState(copy.deepcopy(state.env))
-            loop = JState(copy.deepcopy(state.env))
-            self.statement(stmt.body, loop, rel, depth)
-            state.env = _merge_states([before, loop]).env
+            entry = JState(copy.deepcopy(state.env))
+            current = JState(copy.deepcopy(state.env))
+            # Bounded loop fixpoint: values can become tainted on a later
+            # iteration (e.g. Enumeration/array traversal). Join with the
+            # zero-iteration state on every pass to preserve conservative
+            # semantics for loops that may execute zero times.
+            for _ in range(4):
+                iteration = JState(copy.deepcopy(current.env))
+                self.statement(stmt.body, iteration, rel, depth)
+                joined = _merge_states([entry, iteration])
+                if joined.env == current.env:
+                    current = joined
+                    break
+                current = joined
+            state.env = current.env
         elif name == "ForStatement":
-            before = JState(copy.deepcopy(state.env))
-            loop = JState(copy.deepcopy(state.env))
+            entry = JState(copy.deepcopy(state.env))
+            current = JState(copy.deepcopy(state.env))
             control = getattr(stmt, "control", None)
             if type(control).__name__ == "EnhancedForControl":
                 iterable = self.expr(control.iterable, state, rel, depth)
                 var = getattr(control.var, "declarators", None) or []
                 if var:
-                    loop.env[var[0].name] = (iterable.items[0].clone() if iterable.items else JValue(iterable.tainted, iterable.origins, iterable.trace))
+                    current.env[var[0].name] = (iterable.items[0].clone() if iterable.items else JValue(iterable.tainted, iterable.origins, iterable.trace))
             elif type(control).__name__ == "ForControl":
                 init = getattr(control, "init", None)
-                for item in init or []: self.statement(item, loop, rel, depth)
-            self.statement(stmt.body, loop, rel, depth)
-            state.env = _merge_states([before, loop]).env
+                for item in init or []: self.statement(item, current, rel, depth)
+                entry = JState(copy.deepcopy(current.env))
+            # Re-evaluate the body against the joined state a bounded number
+            # of times; this models loop-carried taint without executing code.
+            for _ in range(4):
+                iteration = JState(copy.deepcopy(current.env))
+                self.statement(stmt.body, iteration, rel, depth)
+                joined = _merge_states([entry, iteration])
+                if joined.env == current.env:
+                    current = joined
+                    break
+                current = joined
+            state.env = current.env
         elif name == "SwitchStatement":
             selector = self.expr(stmt.expression, state, rel, depth)
             cases = stmt.cases or []
