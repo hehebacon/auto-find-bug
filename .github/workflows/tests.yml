@@ -79,6 +79,17 @@ jobs:
             --benchmark-commit 0119da404a3418bc337beb529b72ae755f018f97 \
             --baseline benchmarks/owasp-java-v1.2-baseline.json \
             --output .ci-fixtures/owasp-scorecard.json
+      - name: Run path-sensitive Java AST scorecard
+        run: |
+          python benchmarks/java_flow_semgrep_adapter.py \
+            --source-root .ci-fixtures/BenchmarkJava/src/main/java/org/owasp/benchmark/testcode \
+            --output .ci-fixtures/owasp-java-ast.json
+          python benchmarks/score_owasp_benchmark.py \
+            --expected .ci-fixtures/BenchmarkJava/expectedresults-1.2.csv \
+            --semgrep-json .ci-fixtures/owasp-java-ast.json \
+            --benchmark-commit 0119da404a3418bc337beb529b72ae755f018f97 \
+            --baseline benchmarks/owasp-java-v1.2-baseline.json \
+            --output .ci-fixtures/owasp-java-ast-scorecard.json
       - name: Upload OWASP scorecard artifact
         uses: actions/upload-artifact@v4
         with:
@@ -86,6 +97,8 @@ jobs:
           path: |
             .ci-fixtures/owasp-scorecard.json
             .ci-fixtures/owasp-baseline-scorecard.json
+            .ci-fixtures/owasp-java-ast.json
+            .ci-fixtures/owasp-java-ast-scorecard.json
       - name: Build wheel and verify bundled rules are packaged
         run: |
           python -m build
