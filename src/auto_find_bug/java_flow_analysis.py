@@ -238,8 +238,9 @@ class JavaFlowAnalyzer:
                 # new Helper().transform(input). Only execute a uniquely resolved
                 # in-project method; library/dynamic dispatch remains unknown.
                 candidates = self.methods.get(member, [])
+                same_file_class = [item for item in candidates if item[0] == rel and item[1] == receiver_label]
                 same_class = [item for item in candidates if item[1] == receiver_label]
-                resolved = same_class if same_class else (candidates if len(candidates) == 1 else [])
+                resolved = same_file_class if same_file_class else (same_class if len(same_class) == 1 else (candidates if len(candidates) == 1 else []))
                 identity = f"{resolved[0][0]}:{resolved[0][1]}:{member}" if len(resolved) == 1 else ""
                 if resolved and depth < MAX_CALL_DEPTH and identity not in self.call_stack:
                     helper_rel, helper_class, method = resolved[0]
@@ -432,7 +433,8 @@ class JavaFlowAnalyzer:
             return value
         if name == "ClassCreator":
             args = [self.expr(x, state, rel, depth) for x in (getattr(node, "arguments", None) or [])]
-            type_name = str(getattr(node, "type", ""))
+            type_obj = getattr(node, "type", None)
+            type_name = str(getattr(type_obj, "name", type_obj or ""))
             value = self._join(args)
             if "ProcessBuilder" in type_name and value.tainted:
                 value = JValue(True, value.origins, (*value.trace, f"{rel}:{_node_line(node)} propagation -> ProcessBuilder"))
