@@ -114,6 +114,14 @@ def endpoint(request):
 """)
         self.assertNotIn("FLOW-PY-002", [f["rule_id"] for f in findings])
 
+    def test_dictionary_get_preserves_taint_of_selected_value(self):
+        findings = self.analyze("""
+def endpoint(request):
+    data = {"cmd": request.args.get("cmd")}
+    os.system(data.get("cmd", "fixed"))
+""")
+        self.assertIn("FLOW-PY-002", [f["rule_id"] for f in findings])
+
 
 if __name__ == "__main__":
     unittest.main()
