@@ -234,6 +234,19 @@ class JavaFlowAnalyzer:
             elif selector_name == "MethodInvocation":
                 member = self._member(selector)
                 args = [self.expr(arg, state, rel, depth) for arg in (getattr(selector, "arguments", None) or [])]
+                if base.constant is not UNKNOWN:
+                    try:
+                        if member == "charAt" and args and isinstance(args[0].constant, int):
+                            base = JValue(constant=base.constant[args[0].constant])
+                            continue
+                        if member == "length" and not args:
+                            base = JValue(constant=len(base.constant))
+                            continue
+                        if member == "isEmpty" and not args:
+                            base = JValue(constant=len(base.constant) == 0)
+                            continue
+                    except (IndexError, TypeError, ValueError):
+                        pass
                 # Resolve fluent calls on freshly-created project objects, e.g.
                 # new Helper().transform(input). Only execute a uniquely resolved
                 # in-project method; library/dynamic dispatch remains unknown.
@@ -357,7 +370,8 @@ class JavaFlowAnalyzer:
         if node is None: return JValue()
         name = type(node).__name__
         if name == "Literal":
-            return JValue(constant=self._const(node))
+            value = JValue(constant=self._const(node))
+            return self._apply_selectors(node, value, state, rel, depth, "literal")
         if name == "MemberReference":
             value = state.env.get(self._member(node), JValue()).clone()
             selectors = getattr(node, "selectors", None) or []
