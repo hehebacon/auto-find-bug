@@ -83,7 +83,7 @@ jobs:
       - name: Run path-sensitive Java AST scorecard
         run: |
           python benchmarks/java_flow_semgrep_adapter.py \
-            --source-root .ci-fixtures/BenchmarkJava/src/main/java/org/owasp/benchmark/testcode \
+            --source-root .ci-fixtures/BenchmarkJava/src/main/java \
             --output .ci-fixtures/owasp-java-ast.json
           python benchmarks/score_owasp_benchmark.py \
             --expected .ci-fixtures/BenchmarkJava/expectedresults-1.2.csv \
