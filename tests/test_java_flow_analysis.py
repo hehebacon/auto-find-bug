@@ -228,6 +228,31 @@ class Demo {
             findings = analyze_java_flows(root)["findings"]
             self.assertTrue(any(item["rule_id"] == "FLOW-JAVA-001" for item in findings))
 
+    def test_constant_switch_case_falls_through_to_next_labeled_case(self):
+        self.assertIn("FLOW-JAVA-001", self.rules("""
+import javax.servlet.http.HttpServletRequest;
+import java.sql.Statement;
+class Demo {
+  void run(HttpServletRequest request, Statement statement) throws Exception {
+    String query = "safe";
+    char mode = "ABC".charAt(2);
+    switch (mode) {
+      case 'A':
+        query = "safe";
+        break;
+      case 'C':
+      case 'D':
+        query = request.getParameter("q");
+        break;
+      default:
+        query = "safe";
+        break;
+    }
+    statement.executeQuery(query);
+  }
+}
+"""))
+
     def test_source_without_sink_is_not_reported(self):
         self.assertEqual(self.analyze("""
 import javax.servlet.http.HttpServletRequest;
