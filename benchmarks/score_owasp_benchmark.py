@@ -14,9 +14,15 @@ RULE_BY_CWE = {
     "89": "auto-find-bug.java.servlet-to-sql",
     "78": "auto-find-bug.java.servlet-to-command",
 }
+METRICS = ("tp", "fp", "fn", "tn", "precision", "recall", "false_positive_rate")
 
 
-def score(expected_csv: Path, semgrep_json: Path, benchmark_commit: str) -> dict[str, Any]:
+def score(
+    expected_csv: Path,
+    semgrep_json: Path,
+    benchmark_commit: str,
+    baseline_path: Path | None = None,
+) -> dict[str, Any]:
     with expected_csv.open(newline="", encoding="utf-8") as stream:
         rows = [
             row for row in csv.reader(stream)
@@ -101,14 +107,37 @@ def score(expected_csv: Path, semgrep_json: Path, benchmark_commit: str) -> dict
         report["categories"][cwe] = category
         for key in totals:
             totals[key] += category[key]
+
     tp, fp, fn, tn = (totals[key] for key in ("tp", "fp", "fn", "tn"))
-    report["overall_scored_subset"] = {
+    overall = {
         **totals,
         "total": sum(totals.values()),
         "precision": round(tp / (tp + fp), 6) if tp + fp else 0.0,
         "recall": round(tp / (tp + fn), 6) if tp + fn else 0.0,
         "false_positive_rate": round(fp / (fp + tn), 6) if fp + tn else 0.0,
     }
+    report["overall_scored_subset"] = overall
+
+    if baseline_path is not None:
+        baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+        baseline_metrics = baseline.get("overall_scored_subset")
+        if not isinstance(baseline_metrics, dict) or any(key not in baseline_metrics for key in METRICS):
+            raise ValueError("Baseline is missing required confusion-matrix metrics.")
+        report["comparison_to_baseline"] = {
+            "baseline_analyzer_commit": baseline.get("analyzer_commit"),
+            "baseline_benchmark_commit": baseline.get("benchmark_commit"),
+            "baseline": {key: baseline_metrics[key] for key in METRICS},
+            "delta": {
+                key: round(overall[key] - baseline_metrics[key], 6)
+                for key in METRICS
+            },
+            "interpretation": (
+                "Positive TP/TN and recall/precision deltas are improvements; "
+                "positive FP/FN/false-positive-rate deltas are regressions. "
+                "Review all metrics together; do not optimize a single metric."
+            ),
+        }
+
     report["not_scanned_cases"] = len(set(selected) - scanned_names)
     return report
 
@@ -118,9 +147,10 @@ def main() -> None:
     parser.add_argument("--expected", required=True, type=Path)
     parser.add_argument("--semgrep-json", required=True, type=Path)
     parser.add_argument("--benchmark-commit", required=True)
+    parser.add_argument("--baseline", type=Path)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
-    report = score(args.expected, args.semgrep_json, args.benchmark_commit)
+    report = score(args.expected, args.semgrep_json, args.benchmark_commit, args.baseline)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
