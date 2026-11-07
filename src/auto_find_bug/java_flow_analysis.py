@@ -596,7 +596,25 @@ class JavaFlowAnalyzer:
                         selected = case
                         break
             if selected is not None:
-                for item in selected.statements or []: self.statement(item, state, rel, depth)
+                active = False
+                for case in cases:
+                    labels = [self._const(x) for x in (case.case or [])]
+                    if not active and (selector.constant in labels or not labels):
+                        active = True
+                    if not active:
+                        continue
+                    stop = False
+                    for item in case.statements or []:
+                        if type(item).__name__ in {"BreakStatement", "ReturnStatement", "ThrowStatement"}:
+                            if type(item).__name__ == "BreakStatement":
+                                stop = True
+                                break
+                            self.statement(item, state, rel, depth)
+                            stop = True
+                            break
+                        self.statement(item, state, rel, depth)
+                    if stop:
+                        break
             else:
                 branches = []
                 for case in cases:
