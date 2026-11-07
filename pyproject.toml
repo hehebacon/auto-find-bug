@@ -17,7 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 apk = ["androguard>=4.1.3,<5"]
-sast = ["semgrep>=1.100.0"]
+sast = ["semgrep>=1.100.0", "javalang>=0.13.0"]
 
 [project.scripts]
 auto-find-bug = "auto_find_bug.cli:main"
