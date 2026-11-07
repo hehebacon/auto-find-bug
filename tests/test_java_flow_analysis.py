@@ -150,6 +150,29 @@ class Demo {
 }
 """))
 
+    def test_process_builder_constructor_and_start_are_traced(self):
+        self.assertIn("FLOW-JAVA-002", self.rules("""
+import javax.servlet.http.HttpServletRequest;
+class Demo {
+  void run(HttpServletRequest request) throws Exception {
+    String command = request.getParameter("cmd");
+    new ProcessBuilder(command).start();
+  }
+}
+"""))
+
+    def test_helper_return_of_safe_constant_does_not_keep_taint(self):
+        self.assertNotIn("FLOW-JAVA-002", self.rules("""
+import javax.servlet.http.HttpServletRequest;
+class Demo {
+  String fixed(String ignored) { return "safe"; }
+  void run(HttpServletRequest request) throws Exception {
+    String command = fixed(request.getParameter("cmd"));
+    Runtime.getRuntime().exec(command);
+  }
+}
+"""))
+
     def test_source_without_sink_is_not_reported(self):
         self.assertEqual(self.analyze("""
 import javax.servlet.http.HttpServletRequest;
