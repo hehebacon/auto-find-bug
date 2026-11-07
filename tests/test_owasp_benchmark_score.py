@@ -47,8 +47,8 @@ class OwaspScoreTests(unittest.TestCase):
             root = Path(tmp)
             expected = root / "expected.csv"
             expected.write_text(
-                "BenchmarkTest00001,sqli,true,89\\n"
-                "BenchmarkTest00002,sqli,false,89\\n",
+                "BenchmarkTest00001,sqli,true,89\n"
+                "BenchmarkTest00002,sqli,false,89\n",
                 encoding="utf-8",
             )
             results = root / "semgrep.json"
