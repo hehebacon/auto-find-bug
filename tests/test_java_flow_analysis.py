@@ -173,6 +173,36 @@ class Demo {
 }
 """))
 
+    def test_statement_add_batch_reaches_execute_batch(self):
+        self.assertIn("FLOW-JAVA-001", self.rules("""
+import javax.servlet.http.HttpServletRequest;
+import java.sql.Statement;
+class Demo {
+  void run(HttpServletRequest request, Statement statement) throws Exception {
+    String sql = "SELECT '" + request.getParameter("q") + "'";
+    statement.addBatch(sql);
+    statement.executeBatch();
+  }
+}
+"""))
+
+    def test_constant_char_at_switch_prunes_unreachable_tainted_case(self):
+        self.assertNotIn("FLOW-JAVA-001", self.rules("""
+import javax.servlet.http.HttpServletRequest;
+import java.sql.Statement;
+class Demo {
+  void run(HttpServletRequest request, Statement statement) throws Exception {
+    String query = "safe";
+    char mode = "A".charAt(0);
+    switch (mode) {
+      case 'A': query = "SELECT 1"; break;
+      default: query = request.getParameter("q"); break;
+    }
+    statement.executeQuery(query);
+  }
+}
+"""))
+
     def test_source_without_sink_is_not_reported(self):
         self.assertEqual(self.analyze("""
 import javax.servlet.http.HttpServletRequest;
