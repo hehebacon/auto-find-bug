@@ -111,11 +111,20 @@ rules:
         from: $ELEMENT
         to: $LIST
     pattern-sinks:
-      - pattern: $STMT.executeQuery($QUERY)
-      - pattern: $STMT.execute($QUERY)
-      - pattern: $STMT.executeUpdate($QUERY)
-      - pattern: $CONN.prepareCall($QUERY)
-      - pattern: $CONN.prepareStatement($QUERY)
+      - pattern: $STMT.executeQuery($QUERY, ...)
+      - pattern: $STMT.execute($QUERY, ...)
+      - pattern: $STMT.executeUpdate($QUERY, ...)
+      - pattern: $CONN.prepareCall($QUERY, ...)
+      - pattern: $CONN.prepareStatement($QUERY, ...)
+      - pattern: $JDBC.queryForObject($QUERY, ...)
+      - pattern: $JDBC.queryForList($QUERY, ...)
+      - pattern: $JDBC.queryForMap($QUERY, ...)
+      - pattern: $JDBC.queryForRowSet($QUERY, ...)
+      - pattern: $JDBC.query($QUERY, ...)
+      - pattern: $JDBC.update($QUERY, ...)
+      - pattern: $JDBC.execute($QUERY, ...)
+      - pattern: $ENTITY_MANAGER.createNativeQuery($QUERY, ...)
+      - pattern: $SESSION.createNativeQuery($QUERY, ...)
 
   - id: auto-find-bug.java.servlet-to-command
     languages: [java]
@@ -138,10 +147,10 @@ rules:
         from: $ELEMENT
         to: $LIST
     pattern-sinks:
-      - pattern: Runtime.getRuntime().exec($CMD)
-      - pattern: $R.exec($CMD)
-      - pattern: new ProcessBuilder($CMD)
-      - pattern: $PB.command($CMD)
+      - pattern: Runtime.getRuntime().exec($CMD, ...)
+      - pattern: $R.exec($CMD, ...)
+      - pattern: new ProcessBuilder($CMD, ...)
+      - pattern: $PB.command($CMD, ...)
 
   - id: auto-find-bug.php.request-to-sql
     languages: [php]
