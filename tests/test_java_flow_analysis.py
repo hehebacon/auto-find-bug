@@ -267,6 +267,79 @@ class Demo {
 }
 """))
 
+    def test_parameter_name_enumeration_loop_reaches_sql(self):
+        self.assertIn("FLOW-JAVA-001", self.rules("""
+import javax.servlet.http.HttpServletRequest;
+import java.sql.Statement;
+import java.util.Enumeration;
+class Demo {
+  void run(HttpServletRequest request, Statement statement) throws Exception {
+    String param = "";
+    boolean flag = true;
+    Enumeration<String> names = request.getParameterNames();
+    while (names.hasMoreElements() && flag) {
+      String name = (String) names.nextElement();
+      String[] values = request.getParameterValues(name);
+      if (values != null) {
+        for (int i = 0; i < values.length && flag; i++) {
+          String value = values[i];
+          if (value.equals("marker")) {
+            param = name;
+            flag = false;
+          }
+        }
+      }
+    }
+    statement.executeQuery("SELECT '" + param + "'");
+  }
+}
+"""))
+
+    def test_cookie_list_remove_and_get_preserves_selected_taint(self):
+        self.assertIn("FLOW-JAVA-001", self.rules("""
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.Cookie;
+import java.sql.Statement;
+import java.util.*;
+class Demo {
+  void run(HttpServletRequest request, Statement statement) throws Exception {
+    String param = "none";
+    Cookie[] cookies = request.getCookies();
+    if (cookies != null) {
+      for (Cookie cookie : cookies) {
+        if (cookie.getName().equals("demo")) {
+          param = cookie.getValue();
+          break;
+        }
+      }
+    }
+    List<String> values = new ArrayList<String>();
+    values.add("safe");
+    values.add(param);
+    values.add("more-safe");
+    values.remove(0);
+    String query = "SELECT '" + values.get(0) + "'";
+    statement.executeQuery(query);
+  }
+}
+"""))
+
+    def test_map_put_and_get_preserves_tainted_value(self):
+        self.assertIn("FLOW-JAVA-001", self.rules("""
+import javax.servlet.http.HttpServletRequest;
+import java.sql.Statement;
+import java.util.*;
+class Demo {
+  void run(HttpServletRequest request, Statement statement) throws Exception {
+    String param = request.getParameter("q");
+    Map<String,Object> values = new HashMap<String,Object>();
+    values.put("key", param);
+    String query = "SELECT '" + values.get("key") + "'";
+    statement.executeQuery(query);
+  }
+}
+"""))
+
     def test_source_without_sink_is_not_reported(self):
         self.assertEqual(self.analyze("""
 import javax.servlet.http.HttpServletRequest;
