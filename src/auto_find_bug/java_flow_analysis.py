@@ -473,6 +473,34 @@ class JavaFlowAnalyzer:
             if member == "getValue" and "cookie" in receiver.lower():
                 value = self._source(rel, node, f"{receiver}.getValue")
                 return self._apply_selectors(node, value, state, rel, depth, f"{receiver}.getValue")
+            if receiver in state.env and member in {
+                "toString", "concat", "substring", "subSequence", "replace",
+                "replaceAll", "replaceFirst", "toLowerCase", "toUpperCase",
+                "trim", "strip", "split", "getBytes", "toCharArray",
+            }:
+                base = state.env[receiver].clone()
+                propagated = self._join([base, *args])
+                if base.tainted or any(arg.tainted for arg in args):
+                    propagated.tainted = True
+                    propagated.origins = tuple(dict.fromkeys((*base.origins, *(o for arg in args for o in arg.origins))))
+                    propagated.trace = tuple(dict.fromkeys((*base.trace, *(t for arg in args for t in arg.trace), f"{rel}:{_node_line(node)} propagation -> {receiver}.{member}")))
+                if member == "toString" and not args:
+                    return base
+                if member == "concat" and base.constant is not UNKNOWN and args and args[0].constant is not UNKNOWN:
+                    try: propagated.constant = base.constant + args[0].constant
+                    except Exception: pass
+                return self._apply_selectors(node, propagated, state, rel, depth, f"{receiver}.{member}")
+            if receiver in state.env and member in {
+                "append", "insert", "replace", "delete", "deleteCharAt", "reverse",
+            }:
+                current = state.env[receiver].clone()
+                incoming = self._join(args)
+                if incoming.tainted:
+                    current.tainted = True
+                    current.origins = tuple(dict.fromkeys((*current.origins, *incoming.origins)))
+                    current.trace = tuple(dict.fromkeys((*current.trace, *incoming.trace, f"{rel}:{_node_line(node)} propagation -> {receiver}.{member}")))
+                state.env[receiver] = current
+                return current
             if member == "nextElement" and receiver in state.env and state.env[receiver].tainted:
                 return JValue(True, state.env[receiver].origins, state.env[receiver].trace)
             collection_value = self._collection_call(node, state, rel, depth)
