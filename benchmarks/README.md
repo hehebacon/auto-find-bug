@@ -38,4 +38,6 @@ The baseline's 329 false negatives split into 234 SQL injection and 95 command i
 
 The scorecard compares TP/FP/FN/TN, precision, recall, and false-positive rate against a pinned baseline. Keep the benchmark commit and expected labels fixed; do not modify labels to improve scores. The two scored CWEs are the only OWASP categories currently mapped by the Java rules.
 
+CI now also runs the separate bounded Java AST flow engine against the same pinned corpus and writes `owasp-java-ast-scorecard.json`. This result is intentionally separate from the Semgrep iteration table above. The AST engine must parse all labeled Java cases for the scorecard to be considered complete; parser gaps are reported as unscanned cases and fail the benchmark step. No Java AST accuracy result is published until that CI artifact exists and is reviewed.
+
 This benchmark does not establish accuracy for other OWASP categories, other languages, arbitrary real-world projects, or exploitability. A successful CI run means the tests and scoring pipeline completed; it does not mean the detector is production-ready.
