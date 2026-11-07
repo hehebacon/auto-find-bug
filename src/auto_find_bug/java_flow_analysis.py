@@ -554,6 +554,7 @@ def analyze_java_flows(root: str | Path) -> dict[str, Any]:
         "available": True,
         "engine": "java-ast-flow-v1",
         "files_analyzed": len(analyzer.sources),
+        "analyzed_files": sorted(analyzer.sources),
         "finding_count": len(findings),
         "findings": findings,
         "note": "Java findings are retained only when the bounded AST model traces a recognized request source through assignments, supported collection state or a uniquely resolved helper to a recognized sink.",
