@@ -253,6 +253,20 @@ class Demo {
 }
 """))
 
+    def test_string_builder_taint_survives_append_and_to_string(self):
+        self.assertIn("FLOW-JAVA-001", self.rules("""
+import javax.servlet.http.HttpServletRequest;
+import java.sql.Statement;
+class Demo {
+  void run(HttpServletRequest request, Statement statement) throws Exception {
+    StringBuilder builder = new StringBuilder(request.getParameter("q"));
+    builder.append("safe-suffix");
+    String query = builder.toString();
+    statement.executeQuery(query);
+  }
+}
+"""))
+
     def test_source_without_sink_is_not_reported(self):
         self.assertEqual(self.analyze("""
 import javax.servlet.http.HttpServletRequest;
