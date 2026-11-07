@@ -234,6 +234,29 @@ class JavaFlowAnalyzer:
             elif selector_name == "MethodInvocation":
                 member = self._member(selector)
                 args = [self.expr(arg, state, rel, depth) for arg in (getattr(selector, "arguments", None) or [])]
+                # Resolve fluent calls on freshly-created project objects, e.g.
+                # new Helper().transform(input). Only execute a uniquely resolved
+                # in-project method; library/dynamic dispatch remains unknown.
+                candidates = self.methods.get(member, [])
+                same_class = [item for item in candidates if item[1] == receiver_label]
+                resolved = same_class if same_class else (candidates if len(candidates) == 1 else [])
+                identity = f"{resolved[0][0]}:{resolved[0][1]}:{member}" if len(resolved) == 1 else ""
+                if resolved and depth < MAX_CALL_DEPTH and identity not in self.call_stack:
+                    helper_rel, helper_class, method = resolved[0]
+                    local = JState()
+                    for param, arg in zip(method.parameters or [], args):
+                        bound = arg.clone()
+                        if bound.tainted:
+                            bound.trace = (*bound.trace, f"{rel}:{_node_line(selector)} propagation call {member} -> {param.name}")
+                        local.env[param.name] = bound
+                    previous_class = self.current_class
+                    self.current_class = helper_class
+                    self.call_stack.append(identity)
+                    self.block(method.body or [], local, helper_rel, depth + 1)
+                    self.call_stack.pop()
+                    self.current_class = previous_class
+                    base = (local.returned or JValue()).clone()
+                    continue
                 if member in SQL_SINKS:
                     receiver = receiver_label.lower()
                     generic = any(token in receiver for token in ("stmt", "statement", "jdbc", "query", "entitymanager", "session", "connection", "conn", "database", "db"))
