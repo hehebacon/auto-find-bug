@@ -615,11 +615,18 @@ def analyze_java_flows(root: str | Path) -> dict[str, Any]:
         return {"available": False, "engine": "java-ast-flow-v1", "files_analyzed": 0, "finding_count": 0,
                 "findings": [], "note": str(exc), "limitations": ["Java AST engine is optional; install the SAST extra."]}
     findings = analyzer.run()
+    parsed = set(analyzer.sources)
+    discovered = [
+        path.relative_to(root_dir).as_posix() if root_dir.is_dir() else path.name
+        for path in files
+    ]
     return {
         "available": True,
         "engine": "java-ast-flow-v1",
-        "files_analyzed": len(analyzer.sources),
-        "analyzed_files": sorted(analyzer.sources),
+        "files_discovered": len(discovered),
+        "files_analyzed": len(parsed),
+        "analyzed_files": sorted(parsed),
+        "unparsed_files": sorted(set(discovered) - parsed),
         "finding_count": len(findings),
         "findings": findings,
         "note": "Java findings are retained only when the bounded AST model traces a recognized request source through assignments, supported collection state or a uniquely resolved helper to a recognized sink.",
