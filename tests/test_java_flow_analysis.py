@@ -395,5 +395,57 @@ class Demo {
 """))
 
 
+
+    def test_enumeration_loop_carries_next_element_taint(self):
+        self.assertIn("FLOW-JAVA-001", self.rules("""
+import javax.servlet.http.HttpServletRequest;
+import java.sql.Statement;
+import java.util.Enumeration;
+class Demo {
+  void run(HttpServletRequest request, Statement statement) throws Exception {
+    String param = "";
+    Enumeration<String> names = request.getParameterNames();
+    while (names.hasMoreElements()) {
+      String name = (String) names.nextElement();
+      param = name;
+    }
+    statement.executeQuery(param);
+  }
+}
+"""))
+
+    def test_parameter_values_array_loop_carries_taint(self):
+        self.assertIn("FLOW-JAVA-001", self.rules("""
+import javax.servlet.http.HttpServletRequest;
+import java.sql.Statement;
+class Demo {
+  void run(HttpServletRequest request, Statement statement) throws Exception {
+    String param = "";
+    String[] values = request.getParameterValues("q");
+    for (int i = 0; i < values.length; i++) {
+      String value = values[i];
+      param = value;
+    }
+    statement.executeQuery(param);
+  }
+}
+"""))
+
+    def test_equals_on_tainted_string_is_unknown_not_constant_true(self):
+        self.assertIn("FLOW-JAVA-001", self.rules("""
+import javax.servlet.http.HttpServletRequest;
+import java.sql.Statement;
+class Demo {
+  void run(HttpServletRequest request, Statement statement) throws Exception {
+    String query = "safe";
+    String value = request.getParameter("q");
+    if (value.equals("marker")) {
+      query = value;
+    }
+    statement.executeQuery(query);
+  }
+}
+"""))
+
 if __name__ == "__main__":
     unittest.main()
