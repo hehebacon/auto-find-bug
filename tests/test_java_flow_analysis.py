@@ -183,6 +183,39 @@ class Demo {
 }
 """), [])
 
+    def test_helper_on_new_object_resolves_safe_constant_branch(self):
+        self.assertNotIn("FLOW-JAVA-001", self.rules("""
+import javax.servlet.http.HttpServletRequest;
+import java.sql.Statement;
+class Helper {
+  String choose(String value) {
+    if ((7 * 18) + 106 > 200) return "safe";
+    return value;
+  }
+}
+class Demo {
+  void run(HttpServletRequest request, Statement stmt) throws Exception {
+    String query = "SELECT '" + new Helper().choose(request.getParameter("q")) + "'";
+    stmt.executeQuery(query);
+  }
+}
+"""))
+
+    def test_helper_on_new_object_preserves_tainted_return(self):
+        self.assertIn("FLOW-JAVA-001", self.rules("""
+import javax.servlet.http.HttpServletRequest;
+import java.sql.Statement;
+class Helper {
+  String pass(String value) { return value; }
+}
+class Demo {
+  void run(HttpServletRequest request, Statement stmt) throws Exception {
+    String query = "SELECT '" + new Helper().pass(request.getParameter("q")) + "'";
+    stmt.executeQuery(query);
+  }
+}
+"""))
+
 
 if __name__ == "__main__":
     unittest.main()
