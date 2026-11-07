@@ -97,6 +97,49 @@ class SemgrepIntegrationTests(unittest.TestCase):
             msg=f"List-to-ProcessBuilder flow was not detected: {result}",
         )
 
+    def test_java_parameter_map_and_array_lookup_reach_sql(self):
+        source = (
+            "class Demo { void handle(HttpServletRequest request, JdbcTemplate jdbc) { "
+            "Map<String, String[]> map = request.getParameterMap(); "
+            "String[] values = map.get(\"q\"); String param = values[0]; "
+            "String sql = \"SELECT * FROM users WHERE name='\" + param + \"'\"; "
+            "jdbc.execute(sql); } }"
+        )
+        result = self._scan_java({"parameter_map.java": source})
+        self.assertTrue(
+            any(item["rule_id"] == "auto-find-bug.java.servlet-to-sql" for item in result["findings"]),
+            msg=f"ParameterMap-to-array SQL flow was not detected: {result}",
+        )
+
+    def test_java_cookie_value_and_hashmap_round_trip_reach_sql(self):
+        source = (
+            "class Demo { void handle(HttpServletRequest request, JdbcTemplate jdbc) { "
+            "String param = request.getCookies()[0].getValue(); "
+            "Map<String, Object> values = new HashMap<>(); values.put(\"input\", param); "
+            "String bar = (String) values.get(\"input\"); "
+            "String sql = \"SELECT * FROM users WHERE name='\" + bar + \"'\"; "
+            "jdbc.execute(sql); } }"
+        )
+        result = self._scan_java({"cookie_map.java": source})
+        self.assertTrue(
+            any(item["rule_id"] == "auto-find-bug.java.servlet-to-sql" for item in result["findings"]),
+            msg=f"Cookie/map SQL flow was not detected: {result}",
+        )
+
+    def test_java_parameter_name_enumeration_reaches_sql(self):
+        source = (
+            "class Demo { void handle(HttpServletRequest request, JdbcTemplate jdbc) { "
+            "Enumeration<String> names = request.getParameterNames(); "
+            "String name = (String) names.nextElement(); "
+            "String sql = \"SELECT * FROM users WHERE name='\" + name + \"'\"; "
+            "jdbc.execute(sql); } }"
+        )
+        result = self._scan_java({"parameter_names.java": source})
+        self.assertTrue(
+            any(item["rule_id"] == "auto-find-bug.java.servlet-to-sql" for item in result["findings"]),
+            msg=f"Parameter-name SQL flow was not detected: {result}",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
