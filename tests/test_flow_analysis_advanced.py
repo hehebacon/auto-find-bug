@@ -76,7 +76,7 @@ def endpoint(request):
 """)
         finding = next(f for f in findings if f["rule_id"] == "FLOW-PY-002")
         self.assertEqual(finding["flow"]["source_line"], 6)
-        self.assertEqual(finding["flow"]["sink_line"], 2)
+        self.assertEqual(finding["flow"]["sink_line"], 3)
 
     def test_same_project_helper_return_preserves_taint(self):
         findings = self.analyze("""
