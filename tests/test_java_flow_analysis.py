@@ -267,6 +267,17 @@ class Demo {
 }
 """))
 
+    def test_parameter_names_source_directly_reaches_sql(self):
+        self.assertIn("FLOW-JAVA-001", self.rules("""
+import javax.servlet.http.HttpServletRequest;
+import java.sql.Statement;
+class Demo {
+  void run(HttpServletRequest request, Statement statement) throws Exception {
+    statement.executeQuery(request.getParameterNames().nextElement());
+  }
+}
+"""))
+
     def test_parameter_name_enumeration_loop_reaches_sql(self):
         self.assertIn("FLOW-JAVA-001", self.rules("""
 import javax.servlet.http.HttpServletRequest;
