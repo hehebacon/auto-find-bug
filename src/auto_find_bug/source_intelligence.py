@@ -220,13 +220,26 @@ def analyze_apk(apk_path: str | Path) -> dict[str, Any]:
 
 def analyze_source(path: str | Path) -> dict[str, Any]:
     from .flow_analysis_advanced import analyze_python_flows
+    from .java_flow_analysis import analyze_java_flows
     from .semgrep_analysis import analyze_with_semgrep
 
     result = code_audit.analyze_source(path)
     flows = analyze_python_flows(path)
+    java = analyze_java_flows(path)
     semgrep = analyze_with_semgrep(path)
+
+    # When the Java AST engine is available, it replaces broad Java taint
+    # matches. This keeps Java findings tied to a modeled source-to-sink path.
+    semgrep_findings = semgrep["findings"]
+    if java["available"]:
+        semgrep_findings = [
+            item for item in semgrep_findings
+            if not str(item.get("rule_id", "")).startswith("auto-find-bug.java.")
+        ]
+
     result["findings"].extend(flows["findings"])
-    result["findings"].extend(semgrep["findings"])
+    result["findings"].extend(java["findings"])
+    result["findings"].extend(semgrep_findings)
     result["finding_count"] = len(result["findings"])
     result["flow_analysis"] = {
         "python": {
@@ -235,15 +248,26 @@ def analyze_source(path: str | Path) -> dict[str, Any]:
             "finding_count": flows["finding_count"],
             "limitations": flows["limitations"],
         },
+        "java": {
+            "engine": java["engine"],
+            "available": java["available"],
+            "files_analyzed": java["files_analyzed"],
+            "finding_count": java["finding_count"],
+            "note": java["note"],
+            "limitations": java["limitations"],
+        },
         "semgrep": {
             "engine": semgrep["engine"],
             "available": semgrep["available"],
             "files_analyzed": semgrep["files_analyzed"],
-            "finding_count": semgrep["finding_count"],
+            "finding_count": len(semgrep_findings),
             "note": semgrep["note"],
         },
     }
     result["limitations"].extend(flows["limitations"])
+    result["limitations"].extend(java["limitations"])
+    if not java["available"]:
+        result["limitations"].append(java["note"])
     if not semgrep["available"]:
         result["limitations"].append(semgrep["note"])
     elif semgrep["note"] and "Only bundled local rules" not in semgrep["note"]:
