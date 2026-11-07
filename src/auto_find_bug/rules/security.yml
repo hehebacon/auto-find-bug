@@ -106,10 +106,25 @@ rules:
       - pattern: $REQ.getHeaders(...)
       - pattern: $REQ.getQueryString()
       - pattern: $REQ.getCookies()
+      - pattern: $REQ.getParameterMap()
+      - pattern: $REQ.getParameterNames()
+      - pattern: $COOKIE.getValue()
     pattern-propagators:
       - pattern: $LIST.add($ELEMENT)
         from: $ELEMENT
         to: $LIST
+      - pattern: $MAP.put($KEY, $VALUE)
+        from: $VALUE
+        to: $MAP
+      - pattern: $VALUE = $MAP.get($KEY)
+        from: $MAP
+        to: $VALUE
+      - pattern: $VALUE = $ARRAY[$INDEX]
+        from: $ARRAY
+        to: $VALUE
+      - pattern: $VALUE = (String) $ENUM.nextElement()
+        from: $ENUM
+        to: $VALUE
     pattern-sinks:
       - pattern: $STMT.executeQuery($QUERY, ...)
       - pattern: $STMT.execute($QUERY, ...)
@@ -123,6 +138,7 @@ rules:
       - pattern: $JDBC.query($QUERY, ...)
       - pattern: $JDBC.update($QUERY, ...)
       - pattern: $JDBC.execute($QUERY, ...)
+      - pattern: $JDBC.batchUpdate($QUERY, ...)
       - pattern: $ENTITY_MANAGER.createNativeQuery($QUERY, ...)
       - pattern: $SESSION.createNativeQuery($QUERY, ...)
 
@@ -142,10 +158,15 @@ rules:
       - pattern: $REQ.getHeaders(...)
       - pattern: $REQ.getQueryString()
       - pattern: $REQ.getCookies()
+      - pattern: $REQ.getParameterNames()
+      - pattern: $COOKIE.getValue()
     pattern-propagators:
       - pattern: $LIST.add($ELEMENT)
         from: $ELEMENT
         to: $LIST
+      - pattern: $VALUE = (String) $ENUM.nextElement()
+        from: $ENUM
+        to: $VALUE
     pattern-sinks:
       - pattern: Runtime.getRuntime().exec($CMD, ...)
       - pattern: $R.exec($CMD, ...)
