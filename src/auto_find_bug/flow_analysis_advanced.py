@@ -336,6 +336,24 @@ class Analyzer:
                         container.trace = tuple(dict.fromkeys(t for v in container.mapping.values() for t in v.trace))
                         state.env[var] = container
                 return Value()
+            if name.endswith(".get") and isinstance(node.func, ast.Attribute):
+                receiver = self.eval_expr(node.func.value, state, rel, report, depth)
+                key_value = _literal(node.args[0]) if node.args else UNKNOWN
+                if receiver.mapping is not None and key_value is not UNKNOWN:
+                    found = receiver.mapping.get(str(key_value))
+                    if found is not None: return found.clone()
+                    if len(node.args) > 1: return self.eval_expr(node.args[1], state, rel, report, depth)
+                    return Value()
+            if name.endswith(".setdefault") and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+                var = node.func.value.id
+                container = state.env.get(var, Value(mapping={})).clone()
+                key_value = _literal(node.args[0]) if node.args else UNKNOWN
+                if container.mapping is not None and key_value is not UNKNOWN:
+                    key = str(key_value)
+                    if key not in container.mapping:
+                        container.mapping[key] = self.eval_expr(node.args[1], state, rel, report, depth) if len(node.args) > 1 else Value()
+                    state.env[var] = container
+                    return container.mapping[key].clone()
             if name.endswith(".update") and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
                 var = node.func.value.id
                 container = state.env.get(var, Value(mapping={})).clone()
