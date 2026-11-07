@@ -58,6 +58,7 @@ jobs:
             --expected .ci-fixtures/BenchmarkJava/expectedresults-1.2.csv \
             --semgrep-json .ci-fixtures/owasp-semgrep.json \
             --benchmark-commit 0119da404a3418bc337beb529b72ae755f018f97 \
+            --baseline benchmarks/owasp-java-v1.2-baseline.json \
             --output .ci-fixtures/owasp-scorecard.json
       - name: Upload OWASP scorecard artifact
         uses: actions/upload-artifact@v4
