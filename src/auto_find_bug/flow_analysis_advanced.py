@@ -207,6 +207,10 @@ class Analyzer:
                          tuple(dict.fromkeys(t for v in vals for t in v.trace)),
                          mapping=mapping)
         if isinstance(node, ast.Subscript):
+            dotted_base = self.dotted(node.value)
+            if dotted_base in {"request.args", "request.form", "request.values", "request.json",
+                               "request.GET", "request.POST", "request.data"}:
+                return self._source(dotted_base + "[...]", getattr(node, "lineno", 1), rel)
             container = self.eval_expr(node.value, state, rel, report, depth)
             key = _literal(node.slice)
             if container.items is not None and isinstance(key, int) and -len(container.items) <= key < len(container.items):
@@ -239,9 +243,27 @@ class Analyzer:
                          tuple(dict.fromkeys((*left.trace, *right.trace))), constant)
         if isinstance(node, ast.BoolOp):
             vals = [self.eval_expr(v, state, rel, report, depth) for v in node.values]
+            constant = UNKNOWN
+            if all(v.constant is not UNKNOWN for v in vals):
+                try:
+                    raw = [v.constant for v in vals]
+                    constant = all(raw) if isinstance(node.op, ast.And) else any(raw)
+                except Exception:
+                    pass
             return Value(any(v.tainted for v in vals),
                          tuple(dict.fromkeys(o for v in vals for o in v.origins)),
-                         tuple(dict.fromkeys(t for v in vals for t in v.trace)))
+                         tuple(dict.fromkeys(t for v in vals for t in v.trace)), constant)
+        if isinstance(node, ast.UnaryOp):
+            value = self.eval_expr(node.operand, state, rel, report, depth)
+            if value.constant is not UNKNOWN:
+                try:
+                    if isinstance(node.op, ast.Not): value.constant = not value.constant
+                    elif isinstance(node.op, ast.USub): value.constant = -value.constant
+                    elif isinstance(node.op, ast.UAdd): value.constant = +value.constant
+                    elif isinstance(node.op, ast.Invert): value.constant = ~value.constant
+                except Exception:
+                    value.constant = UNKNOWN
+            return value
         if isinstance(node, ast.IfExp):
             truth = self._truth(node.test, state)
             if truth is True: return self.eval_expr(node.body, state, rel, report, depth)
@@ -302,6 +324,16 @@ class Analyzer:
                         container.tainted = any(v.tainted for v in container.items)
                         container.origins = tuple(dict.fromkeys(o for v in container.items for o in v.origins))
                         container.trace = tuple(dict.fromkeys(t for v in container.items for t in v.trace))
+                        state.env[var] = container
+                    elif container.mapping is not None:
+                        if name.endswith(".clear"):
+                            container.mapping.clear()
+                        elif name.endswith(".pop") and node.args:
+                            key_value = _literal(node.args[0])
+                            if key_value is not UNKNOWN: container.mapping.pop(str(key_value), None)
+                        container.tainted = any(v.tainted for v in container.mapping.values())
+                        container.origins = tuple(dict.fromkeys(o for v in container.mapping.values() for o in v.origins))
+                        container.trace = tuple(dict.fromkeys(t for v in container.mapping.values() for t in v.trace))
                         state.env[var] = container
                 return Value()
             if name.endswith(".update") and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
