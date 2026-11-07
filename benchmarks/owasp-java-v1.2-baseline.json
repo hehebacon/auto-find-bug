@@ -1,0 +1,15 @@
+{
+  "benchmark": "OWASP Benchmark Java v1.2",
+  "benchmark_commit": "0119da404a3418bc337beb529b72ae755f018f97",
+  "analyzer_commit": "babb601e5afb39d166e00a47caa4d18e59b56be0",
+  "overall_scored_subset": {
+    "tp": 69,
+    "fp": 46,
+    "fn": 329,
+    "tn": 311,
+    "total": 755,
+    "precision": 0.6,
+    "recall": 0.173367,
+    "false_positive_rate": 0.128852
+  }
+}
