@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .flow_analysis import _route_guard_findings
+
 UNKNOWN = object()
 MAX_FILES = 4000
 MAX_FILE_BYTES = 1_000_000
@@ -85,6 +87,7 @@ class Analyzer:
         self.functions: dict[str, list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef, str]]] = {}
         self.sources: dict[str, list[str]] = {}
         self.findings: dict[tuple[str, int, str, int], dict[str, Any]] = {}
+        self.route_findings: list[dict[str, Any]] = []
         self.steps = 0
         self.call_stack: list[str] = []
         for path in files:
@@ -501,6 +504,7 @@ class Analyzer:
             except (OSError, SyntaxError):
                 continue
             rel = path.relative_to(self.root).as_posix() if self.root.is_dir() else path.name
+            self.route_findings.extend(_route_guard_findings(source, rel))
             # Analyze each function independently; same-file helper resolution is
             # shared, but caller state never leaks between unrelated functions.
             for node in tree.body:
@@ -513,7 +517,7 @@ class Analyzer:
                     self.call_stack = []
                 elif isinstance(node, ast.Expr):
                     self.eval_expr(node.value, State(), rel)
-        return list(self.findings.values())
+        return list(self.findings.values()) + self.route_findings
 
 
 def analyze_python_flows(root: str | Path) -> dict[str, Any]:
