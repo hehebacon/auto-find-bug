@@ -375,11 +375,21 @@ class JavaFlowAnalyzer:
                 return JValue(True, state.env[receiver].origins, state.env[receiver].trace)
             collection_value = self._collection_call(node, state, rel, depth)
             if collection_value is not None: return collection_value
-            if member in SQL_SINKS:
+            sql_receiver = receiver.lower()
+            sql_generic_receiver = any(token in sql_receiver for token in (
+                "stmt", "statement", "jdbc", "query", "entitymanager", "session",
+                "connection", "conn", "database", "db",
+            ))
+            sql_strong = member in {
+                "executeQuery", "executeUpdate", "prepareStatement", "prepareCall",
+                "createNativeQuery", "queryForObject", "queryForList", "queryForMap",
+                "queryForRowSet",
+            }
+            if member in SQL_SINKS and (sql_strong or sql_generic_receiver):
                 val = args[0] if args else JValue()
                 if val.tainted: self._record("FLOW-JAVA-001", rel, node, f"{receiver}.{member}", val)
                 return JValue()
-            if member in COMMAND_SINKS:
+            if member in COMMAND_SINKS and any(token in receiver.lower() for token in ("runtime", "process")):
                 val = args[0] if args else JValue()
                 if val.tainted: self._record("FLOW-JAVA-002", rel, node, f"{receiver}.{member}", val)
                 return JValue()
