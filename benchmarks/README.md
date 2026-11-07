@@ -9,29 +9,33 @@ The test corpus contains four synthetic positive cases (Python, JavaScript, Java
 
 ## Latest measured result
 
-Pinned benchmark: OWASP Benchmark Java v1.2, benchmark commit `0119da404a3418bc337beb529b72ae755f018f97`. The comparison baseline is analyzer commit `babb601e5afb39d166e00a47caa4d18e59b56be0`. The expanded Java rules were measured at analyzer commit `0ff073532d30a4410af52b32f07cc5b51f9720b5` on the same pinned corpus. All 2,740 Java files were scanned; all 755 labeled SQLi/command-injection cases were included.
+Pinned benchmark: OWASP Benchmark Java v1.2, benchmark commit `0119da404a3418bc337beb529b72ae755f018f97`. CI pins Semgrep `1.184.0` and scans all 2,740 Java files; all 755 labeled SQLi/command-injection cases are scored. The workflow re-runs the historical baseline rule file from analyzer commit `babb601e5afb39d166e00a47caa4d18e59b56be0` on the same runner and retains complete case-ID lists for both scorecards.
 
-### Overall comparison
+### Iteration comparison
 
-| Metric | Baseline | Expanded rules | Change |
+| Metric | Baseline rules | Expanded sinks | Expanded sources + propagation |
 |---|---:|---:|---:|
-| True positives | 69 | 234 | +165 |
-| False positives | 46 | 154 | +108 |
-| False negatives | 329 | 164 | -165 |
-| True negatives | 311 | 203 | -108 |
-| Precision | 60.00% | 60.31% | +0.31 pp |
-| Recall | 17.34% | 58.79% | +41.46 pp |
-| False-positive rate | 12.89% | 43.14% | +30.25 pp |
+| True positives | 69 | 234 | 339 |
+| False positives | 46 | 154 | 221 |
+| False negatives | 329 | 164 | 59 |
+| True negatives | 311 | 203 | 136 |
+| Precision | 60.00% | 60.31% | 60.54% |
+| Recall | 17.34% | 58.79% | 85.18% |
+| False-positive rate | 12.89% | 43.14% | 61.90% |
 
-### Per-CWE result after expansion
+### Latest per-CWE result
 
 | CWE | TP | FP | FN | TN | Precision | Recall | FPR |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| CWE-89 SQL injection | 155 | 95 | 117 | 137 | 62.00% | 56.99% | 40.95% |
-| CWE-78 Command injection | 79 | 59 | 47 | 66 | 57.25% | 62.70% | 47.20% |
+| CWE-89 SQL injection | 245 | 150 | 27 | 82 | 62.03% | 90.07% | 64.66% |
+| CWE-78 Command injection | 94 | 71 | 32 | 54 | 56.97% | 74.60% | 56.80% |
 
-The rule expansion materially improved recall but also caused a large increase in false positives. This is **not an accepted quality improvement yet**. Initial source review found examples where Semgrep over-approximates taint across a collection after an element is removed, and where it does not prove a branch condition is constant. These are analysis limitations, not cases to suppress with benchmark-specific exceptions.
+The latest iteration catches substantially more labeled vulnerable cases, but the false-positive rate is too high. **This is not an accepted accuracy result.** More source/propagator coverage has traded many safe cases for additional detections; precision barely moved. Do not use the recall increase alone as evidence that the detector is reliable.
 
-The scorecard now records the complete missed-case and false-positive ID lists for each CWE, as well as the first 100 IDs for quick inspection. CI compares TP/FP/FN/TN, precision, recall, and false-positive rate against the pinned baseline. Keep the benchmark commit and expected labels fixed; do not modify labels to improve scores.
+### Baseline error analysis
 
-The benchmark only measures Java CWE-89 and CWE-78. It does not establish accuracy for other OWASP categories, other languages, arbitrary real-world projects, or exploitability. A successful CI run means the tests and scoring pipeline completed; it does not mean the detector is production-ready.
+The baseline's 329 false negatives split into 234 SQL injection and 95 command injection cases. The 46 false positives split into 28 SQL injection and 18 command injection cases. Representative patterns and case IDs are documented in [OWASP Java case analysis](owasp-java-v1.2-case-analysis.md). CI artifacts retain the full case-ID lists, not only a truncated sample.
+
+The scorecard compares TP/FP/FN/TN, precision, recall, and false-positive rate against a pinned baseline. Keep the benchmark commit and expected labels fixed; do not modify labels to improve scores. The two scored CWEs are the only OWASP categories currently mapped by the Java rules.
+
+This benchmark does not establish accuracy for other OWASP categories, other languages, arbitrary real-world projects, or exploitability. A successful CI run means the tests and scoring pipeline completed; it does not mean the detector is production-ready.
