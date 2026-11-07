@@ -203,6 +203,31 @@ class Demo {
 }
 """))
 
+    def test_cross_file_helper_method_propagates_request_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Helper.java").write_text("""
+import javax.servlet.http.HttpServletRequest;
+class Helper {
+  private HttpServletRequest request;
+  Helper(HttpServletRequest request) { this.request = request; }
+  String read(String key) { return request.getParameter(key); }
+}
+""", encoding="utf-8")
+            (root / "Demo.java").write_text("""
+import javax.servlet.http.HttpServletRequest;
+import java.sql.Statement;
+class Demo {
+  void run(HttpServletRequest request, Statement statement) throws Exception {
+    Helper helper = new Helper(request);
+    String query = "SELECT '" + helper.read("q") + "'";
+    statement.executeQuery(query);
+  }
+}
+""", encoding="utf-8")
+            findings = analyze_java_flows(root)["findings"]
+            self.assertTrue(any(item["rule_id"] == "FLOW-JAVA-001" for item in findings))
+
     def test_source_without_sink_is_not_reported(self):
         self.assertEqual(self.analyze("""
 import javax.servlet.http.HttpServletRequest;
