@@ -75,7 +75,14 @@ def _merge_states(states: list[JState]) -> JState:
         for other in values[1:]:
             value = _merge_value(value, other)
         env[key] = value
-    return JState(env=env, terminated=bool(states) and all(s.terminated for s in states))
+    returned = [s.returned for s in states if s.returned is not None]
+    if returned:
+        if len(returned) != len(states): returned.append(JValue())
+        merged_return = returned[0].clone()
+        for value in returned[1:]: merged_return = _merge_value(merged_return, value)
+    else:
+        merged_return = None
+    return JState(env=env, returned=merged_return, terminated=bool(states) and all(s.terminated for s in states))
 
 
 def _node_line(node: Any) -> int:
@@ -187,18 +194,24 @@ class JavaFlowAnalyzer:
         name = type(target).__name__
         if name == "MemberReference":
             variable = self._member(target)
-            assigned = value.clone()
-            if assigned.tainted:
-                assigned.trace = (*assigned.trace, f"{rel}:{_node_line(target)} propagation -> {variable}")
-            state.env[variable] = assigned
             selectors = getattr(target, "selectors", None) or []
+            if not selectors:
+                assigned = value.clone()
+                if assigned.tainted:
+                    assigned.trace = (*assigned.trace, f"{rel}:{_node_line(target)} propagation -> {variable}")
+                state.env[variable] = assigned
+                return
+            current = state.env.get(variable, JValue()).clone()
             for selector in selectors:
                 if type(selector).__name__ == "ArraySelector":
                     key = self.expr(getattr(selector, "index", None), state, rel, 0).constant
-                    current = state.env[variable].clone()
                     if current.items is not None and isinstance(key, int) and -len(current.items) <= key < len(current.items):
                         current.items[key] = value.clone()
-                    state.env[variable] = current
+                    elif current.items is not None:
+                        current.items = [ _merge_value(item, value) for item in current.items ]
+            current.tainted = any(item.tainted for item in (current.items or []))
+            current.origins = tuple(dict.fromkeys(o for item in (current.items or []) for o in item.origins))
+            state.env[variable] = current
         elif name == "ArraySelector":
             pass
 
@@ -278,9 +291,14 @@ class JavaFlowAnalyzer:
                         value = JValue()
             return value
         if name in {"ArrayInitializer", "ArrayCreator"}:
+            initializer = getattr(node, "initializers", None)
+            if initializer is None:
+                initializer = getattr(node, "initializer", None)
+            if initializer is not None and type(initializer).__name__ == "ArrayInitializer":
+                return self.expr(initializer, state, rel, depth)
             raw = getattr(node, "initializers", None)
-            if raw is None:
-                raw = getattr(node, "dimensions", None)
+            if raw is None and name == "ArrayCreator":
+                raw = []
             values = [self.expr(x, state, rel, depth) for x in (raw or [])]
             return JValue(any(v.tainted for v in values),
                           tuple(dict.fromkeys(o for v in values for o in v.origins)),
@@ -313,6 +331,16 @@ class JavaFlowAnalyzer:
             return JValue(left.tainted or right.tainted,
                           tuple(dict.fromkeys((*left.origins, *right.origins))),
                           tuple(dict.fromkeys((*left.trace, *right.trace))), constant)
+        if name == "UnaryOperation":
+            value = self.expr(getattr(node, "expression", None), state, rel, depth)
+            operator = getattr(node, "operator", None)
+            if value.constant is not UNKNOWN:
+                try:
+                    if operator == "!": value.constant = not value.constant
+                    elif operator == "-": value.constant = -value.constant
+                    elif operator == "+": value.constant = +value.constant
+                except Exception: value.constant = UNKNOWN
+            return value
         if name == "TernaryExpression":
             truth = self._truth(node.condition, state, rel, depth)
             if truth is True: return self.expr(node.if_true, state, rel, depth)
@@ -336,6 +364,11 @@ class JavaFlowAnalyzer:
             args = [self.expr(arg, state, rel, depth) for arg in args_nodes]
             if member in SOURCE_METHODS and any(x in receiver.lower() for x in ("request", "req")):
                 return self._source(rel, node, f"{receiver}.{member}")
+            if member == "asList" and "Arrays" in receiver:
+                return JValue(any(v.tainted for v in args),
+                              tuple(dict.fromkeys(o for v in args for o in v.origins)),
+                              tuple(dict.fromkeys(t for v in args for t in v.trace)),
+                              items=[v.clone() for v in args])
             if member == "getValue" and "cookie" in receiver.lower():
                 return self._source(rel, node, f"{receiver}.getValue")
             if member == "nextElement" and receiver in state.env and state.env[receiver].tainted:
@@ -406,6 +439,8 @@ class JavaFlowAnalyzer:
                 if stmt.else_statement: self.statement(stmt.else_statement, right, rel, depth)
                 merged = _merge_states([left, right])
                 state.env = merged.env
+                state.returned = merged.returned
+                state.terminated = merged.terminated
         elif name == "ReturnStatement":
             state.returned = self.expr(stmt.expression, state, rel, depth)
             state.terminated = True
