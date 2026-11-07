@@ -148,7 +148,7 @@ class Analyzer:
                     "sink": sink,
                     "sink_line": line,
                     "function": self.call_stack[-1] if self.call_stack else "<module>",
-                    "variables": [],
+                    "variables": [entry.split("->", 1)[1].strip() for entry in trace if "propagation ->" in entry],
                     "trace": trace[-24:],
                 },
             }
@@ -164,7 +164,11 @@ class Analyzer:
 
     def _assign(self, target: ast.AST, value: Value, state: State, rel: str) -> None:
         if isinstance(target, ast.Name):
-            state.env[target.id] = value.clone()
+            assigned = value.clone()
+            if assigned.tainted:
+                line = getattr(target, "lineno", 1)
+                assigned.trace = (*assigned.trace, f"{rel}:{line} propagation -> {target.id}")
+            state.env[target.id] = assigned
         elif isinstance(target, (ast.Tuple, ast.List)):
             if value.items is not None and len(value.items) == len(target.elts):
                 for child, item in zip(target.elts, value.items):
@@ -399,7 +403,10 @@ class Analyzer:
                     local = State()
                     positional = list(fn.args.posonlyargs) + list(fn.args.args)
                     for arg_node, arg_value in zip(positional, args):
-                        local.env[arg_node.arg] = arg_value.clone()
+                        bound = arg_value.clone()
+                        if bound.tainted:
+                            bound.trace = (*bound.trace, f"{rel}:{getattr(node, 'lineno', 1)} propagation call {name} -> {arg_node.arg}")
+                        local.env[arg_node.arg] = bound
                     for kw in node.keywords:
                         if kw.arg:
                             local.env[kw.arg] = self.eval_expr(kw.value, state, rel, report, depth)
