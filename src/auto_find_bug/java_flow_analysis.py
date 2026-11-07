@@ -100,7 +100,9 @@ class JavaFlowAnalyzer:
         self.root = root
         self.files = files
         self.sources: dict[str, list[str]] = {}
-        self.methods: dict[str, list[tuple[str, Any]]] = {}
+        self.methods: dict[str, list[tuple[str, str, Any]]] = {}
+        self.method_owner: dict[int, str] = {}
+        self.current_class = ""
         self.trees: list[tuple[str, Any]] = []
         self.findings: dict[tuple[str, str, int, int, int], dict[str, Any]] = {}
         self.steps = 0
@@ -114,8 +116,11 @@ class JavaFlowAnalyzer:
             rel = path.relative_to(root).as_posix() if root.is_dir() else path.name
             self.sources[rel] = source.splitlines()
             self.trees.append((rel, tree))
-            for _, node in tree.filter(self.javalang.tree.MethodDeclaration):
-                self.methods.setdefault(node.name, []).append((rel, node))
+            for _, class_node in tree.filter(self.javalang.tree.ClassDeclaration):
+                for member in class_node.body or []:
+                    if isinstance(member, self.javalang.tree.MethodDeclaration):
+                        self.methods.setdefault(member.name, []).append((rel, class_node.name, member))
+                        self.method_owner[id(member)] = class_node.name
 
     @staticmethod
     def _const(node: Any) -> Any:
@@ -457,9 +462,11 @@ class JavaFlowAnalyzer:
                 if val.tainted: self._record("FLOW-JAVA-002", rel, node, f"{receiver}.start", val)
                 return JValue()
             candidates = self.methods.get(member, [])
-            if len(candidates) == 1 and depth < MAX_CALL_DEPTH:
-                helper_rel, method = candidates[0]
-                identity = f"{helper_rel}:{member}"
+            same_class = [item for item in candidates if item[1] == self.current_class]
+            resolved = same_class if same_class else (candidates if len(candidates) == 1 else [])
+            if len(resolved) == 1 and depth < MAX_CALL_DEPTH:
+                helper_rel, helper_class, method = resolved[0]
+                identity = f"{helper_rel}:{helper_class}:{member}"
                 if identity not in self.call_stack:
                     local = JState()
                     for param, arg in zip(method.parameters or [], args):
@@ -467,9 +474,12 @@ class JavaFlowAnalyzer:
                         if bound.tainted:
                             bound.trace = (*bound.trace, f"{rel}:{_node_line(node)} propagation call {member} -> {param.name}")
                         local.env[param.name] = bound
+                    previous_class = self.current_class
+                    self.current_class = helper_class
                     self.call_stack.append(identity)
                     self.block(method.body or [], local, helper_rel, depth + 1)
                     self.call_stack.pop()
+                    self.current_class = previous_class
                     returned = (local.returned or JValue()).clone()
                     return self._apply_selectors(node, returned, state, rel, depth, f"{receiver}.{member}")
             return self._apply_selectors(node, self._join(args), state, rel, depth, f"{receiver}.{member}")
@@ -569,12 +579,15 @@ class JavaFlowAnalyzer:
     def run(self) -> list[dict[str, Any]]:
         for rel, tree in self.trees:
             for _, method in tree.filter(self.javalang.tree.MethodDeclaration):
-                self.call_stack = [f"{rel}:{method.name}"]
+                self.current_class = self.method_owner.get(id(method), "")
+                self.steps = 0
+                self.call_stack = [f"{rel}:{self.current_class}:{method.name}"]
                 state = JState()
                 for param in method.parameters or []:
                     state.env[param.name] = JValue()
                 self.block(method.body or [], state, rel, 0)
                 self.call_stack = []
+            self.current_class = ""
         return list(self.findings.values())
 
 
