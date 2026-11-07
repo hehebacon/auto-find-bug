@@ -21,7 +21,7 @@ MAX_STEPS = 100_000
 SQL_SINKS = {
     "executeQuery", "executeUpdate", "execute", "prepareStatement", "prepareCall",
     "queryForObject", "queryForList", "queryForMap", "queryForRowSet", "query",
-    "update", "batchUpdate", "createNativeQuery",
+    "update", "batchUpdate", "createNativeQuery", "executeBatch",
 }
 COMMAND_SINKS = {"exec"}
 SOURCE_METHODS = {
@@ -302,6 +302,9 @@ class JavaFlowAnalyzer:
         raw_args = getattr(node, "arguments", None) or []
         if member in {"add", "addElement"} and current.items is not None and args:
             current.items.append(args[-1].clone())
+        elif member == "addBatch" and args:
+            if current.items is None: current.items = []
+            current.items.append(args[0].clone())
         elif member == "add" and current.items is None:
             current.items = [args[-1].clone()] if args else []
         elif member in {"put", "putIfAbsent"} and args:
@@ -439,6 +442,24 @@ class JavaFlowAnalyzer:
             receiver = self._qualifier(node)
             args_nodes = getattr(node, "arguments", None) or []
             args = [self.expr(arg, state, rel, depth) for arg in args_nodes]
+            # Fold deterministic String operations used by branch/switch guards.
+            receiver_value = state.env.get(receiver, JValue()) if receiver else JValue()
+            if receiver_value.constant is not UNKNOWN:
+                try:
+                    if member == "charAt" and args and isinstance(args[0].constant, int):
+                        return JValue(constant=receiver_value.constant[args[0].constant])
+                    if member == "length" and not args:
+                        return JValue(constant=len(receiver_value.constant))
+                    if member == "isEmpty" and not args:
+                        return JValue(constant=len(receiver_value.constant) == 0)
+                    if member == "equals" and args and args[0].constant is not UNKNOWN:
+                        return JValue(constant=receiver_value.constant == args[0].constant)
+                    if member == "substring" and args and all(a.constant is not UNKNOWN for a in args):
+                        start = args[0].constant
+                        end = args[1].constant if len(args) > 1 else len(receiver_value.constant)
+                        return JValue(constant=receiver_value.constant[start:end])
+                except (IndexError, TypeError, ValueError):
+                    pass
             if member in SOURCE_METHODS and any(x in receiver.lower() for x in ("request", "req")):
                 value = self._source(rel, node, f"{receiver}.{member}")
                 return self._apply_selectors(node, value, state, rel, depth, f"{receiver}.{member}")
@@ -465,7 +486,9 @@ class JavaFlowAnalyzer:
                 "queryForRowSet",
             }
             if member in SQL_SINKS and (sql_strong or sql_generic_receiver):
-                val = args[0] if args else JValue()
+                val = args[0] if args else state.env.get(receiver, JValue())
+                if member == "executeBatch" and not val.tainted:
+                    val = state.env.get(receiver, JValue())
                 if val.tainted: self._record("FLOW-JAVA-001", rel, node, f"{receiver}.{member}", val)
                 return JValue()
             if member in COMMAND_SINKS and any(token in receiver.lower() for token in ("runtime", "process")):
