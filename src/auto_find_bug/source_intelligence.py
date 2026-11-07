@@ -219,7 +219,7 @@ def analyze_apk(apk_path: str | Path) -> dict[str, Any]:
 
 
 def analyze_source(path: str | Path) -> dict[str, Any]:
-    from .flow_analysis import analyze_python_flows
+    from .flow_analysis_advanced import analyze_python_flows
     from .semgrep_analysis import analyze_with_semgrep
 
     result = code_audit.analyze_source(path)
