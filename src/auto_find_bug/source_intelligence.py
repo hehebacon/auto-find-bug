@@ -232,9 +232,13 @@ def analyze_source(path: str | Path) -> dict[str, Any]:
     # matches. This keeps Java findings tied to a modeled source-to-sink path.
     semgrep_findings = semgrep["findings"]
     if java["available"]:
+        parsed_java = set(java.get("analyzed_files", []))
         semgrep_findings = [
             item for item in semgrep_findings
-            if not str(item.get("rule_id", "")).startswith("auto-find-bug.java.")
+            if not (
+                str(item.get("rule_id", "")).startswith("auto-find-bug.java.")
+                and str(item.get("file", "")).replace("\\", "/") in parsed_java
+            )
         ]
 
     result["findings"].extend(flows["findings"])
@@ -253,6 +257,7 @@ def analyze_source(path: str | Path) -> dict[str, Any]:
             "available": java["available"],
             "files_analyzed": java["files_analyzed"],
             "finding_count": java["finding_count"],
+            "analyzed_files": java.get("analyzed_files", []),
             "note": java["note"],
             "limitations": java["limitations"],
         },
