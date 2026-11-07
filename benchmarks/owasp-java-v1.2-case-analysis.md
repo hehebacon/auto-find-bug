@@ -63,12 +63,18 @@ The measured iterations are:
 
 This confirms that the added sources, sinks, and propagators find many more labeled vulnerable cases, but they also over-approximate many safe paths. The latest rule set is therefore **experimental and not accepted as an accuracy improvement**. Do not hide this trade-off by reporting recall alone.
 
+## Java AST flow-engine implementation status
+
+A bounded Java AST engine has now been added behind the optional SAST extra. It models supported constant conditions, variable overwrites, literal arrays/List/Map state and selected collection mutations, and same-class or uniquely named helper methods. Parsed Java files use this engine's source-to-propagation-to-sink findings instead of broad Semgrep Java taint matches; unparsed files retain Semgrep fallback results. A dedicated adapter feeds its results into the existing pinned scorecard without changing benchmark labels or the baseline.
+
+**No new benchmark metrics are recorded here yet.** The CI run must parse the complete labeled Java corpus and produce the separate AST scorecard before any precision/recall claim is made. A parser gap or incomplete scan must remain visible as an incomplete benchmark, not be counted as a clean negative.
+
 ## Required next engineering work
 
-1. Add a Java-aware local flow model for constant branch feasibility, assignment overwrites, array/map/list contents, and collection mutations.
-2. Add bounded helper-method summaries with explicit limits; do not infer cross-file or dynamic-dispatch completeness.
-3. Keep broad source/sink matches as unvalidated candidates unless the path evidence survives the context checks.
-4. Re-run the same pinned benchmark after each isolated change and compare all four confusion-matrix values plus precision, recall, and false-positive rate.
-5. Add regression tests for each fixed case and for nearby safe variants to prevent false-positive regressions.
+1. Run the new Java AST scorecard on the exact pinned OWASP Benchmark Java v1.2 commit.
+2. Inspect every remaining false positive and false negative, including source → propagation → sink traces.
+3. Extend only the demonstrated gaps in branch feasibility, array/map/list state, overwrites, and helper summaries.
+4. Compare TP/FP/FN/TN, precision, recall, and false-positive rate against the unchanged baseline and previous Semgrep iteration.
+5. Add regression tests for each fixed case and nearby safe variants.
 
 No benchmark-specific case ID should be hard-coded as safe or vulnerable in the detector. The benchmark is a measurement corpus, not a list of exceptions.
