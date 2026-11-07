@@ -232,13 +232,11 @@ def analyze_source(path: str | Path) -> dict[str, Any]:
     # matches. This keeps Java findings tied to a modeled source-to-sink path.
     semgrep_findings = semgrep["findings"]
     if java["available"]:
-        parsed_java = set(java.get("analyzed_files", []))
+        # Do not retain broad Java taint matches without a verified AST path.
+        # Files the parser cannot read are exposed as coverage gaps instead.
         semgrep_findings = [
             item for item in semgrep_findings
-            if not (
-                str(item.get("rule_id", "")).startswith("auto-find-bug.java.")
-                and str(item.get("file", "")).replace("\\", "/") in parsed_java
-            )
+            if not str(item.get("rule_id", "")).startswith("auto-find-bug.java.")
         ]
 
     result["findings"].extend(flows["findings"])
@@ -258,6 +256,8 @@ def analyze_source(path: str | Path) -> dict[str, Any]:
             "files_analyzed": java["files_analyzed"],
             "finding_count": java["finding_count"],
             "analyzed_files": java.get("analyzed_files", []),
+            "files_discovered": java.get("files_discovered", 0),
+            "unparsed_files": java.get("unparsed_files", []),
             "note": java["note"],
             "limitations": java["limitations"],
         },
