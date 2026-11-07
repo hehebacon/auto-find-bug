@@ -286,6 +286,8 @@ class JavaFlowAnalyzer:
                 elif member == "start" and base.tainted:
                     self._record("FLOW-JAVA-002", rel, selector, f"{receiver_label}.start", base)
                     base = JValue()
+                elif member == "nextElement" and base.tainted:
+                    base = JValue(True, base.origins, base.trace)
                 elif member == "get":
                     key = args[0].constant if args else UNKNOWN
                     if base.mapping is not None and key is not UNKNOWN:
@@ -374,17 +376,7 @@ class JavaFlowAnalyzer:
             return self._apply_selectors(node, value, state, rel, depth, "literal")
         if name == "MemberReference":
             value = state.env.get(self._member(node), JValue()).clone()
-            selectors = getattr(node, "selectors", None) or []
-            for selector in selectors:
-                if type(selector).__name__ == "ArraySelector":
-                    index = self.expr(getattr(selector, "index", None), state, rel, depth).constant
-                    if value.items is not None and isinstance(index, int) and -len(value.items) <= index < len(value.items):
-                        value = value.items[index].clone()
-                    elif value.tainted:
-                        value = JValue(True, value.origins, value.trace)
-                    else:
-                        value = JValue()
-            return value
+            return self._apply_selectors(node, value, state, rel, depth, self._member(node))
         if name in {"ArrayInitializer", "ArrayCreator"}:
             initializer = getattr(node, "initializers", None)
             if initializer is None:
