@@ -65,7 +65,7 @@ This confirms that the added sources, sinks, and propagators find many more labe
 
 ## Java AST flow-engine implementation status
 
-A bounded Java AST engine has now been added behind the optional SAST extra. It models supported constant conditions, variable overwrites, literal arrays/List/Map state and selected collection mutations, and same-class or uniquely named helper methods. Parsed Java files use this engine's source-to-propagation-to-sink findings instead of broad Semgrep Java taint matches; unparsed files retain Semgrep fallback results. A dedicated adapter feeds its results into the existing pinned scorecard without changing benchmark labels or the baseline.
+A bounded Java AST engine has now been added behind the optional SAST extra. It models supported constant conditions, variable overwrites, literal arrays/List/Map state and selected collection mutations, and same-class or uniquely named helper methods. When the AST engine is available, broad Semgrep Java taint matches are suppressed rather than retained without path evidence. Parsed files use source-to-propagation-to-sink findings; unparsed files are explicitly listed as coverage gaps. A dedicated adapter feeds its results into the existing pinned scorecard without changing benchmark labels or the baseline.
 
 **No new benchmark metrics are recorded here yet.** The CI run must parse the complete labeled Java corpus and produce the separate AST scorecard before any precision/recall claim is made. A parser gap or incomplete scan must remain visible as an incomplete benchmark, not be counted as a clean negative.
 
