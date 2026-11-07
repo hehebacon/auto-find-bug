@@ -97,6 +97,23 @@ def endpoint(request):
 """)
         self.assertEqual(findings, [])
 
+    def test_request_form_subscript_is_a_source(self):
+        findings = self.analyze("""
+def endpoint(request):
+    value = request.form["cmd"]
+    os.system(value)
+""")
+        self.assertIn("FLOW-PY-002", [f["rule_id"] for f in findings])
+
+    def test_dictionary_pop_removes_tainted_entry(self):
+        findings = self.analyze("""
+def endpoint(request):
+    data = {"cmd": request.args.get("cmd")}
+    data.pop("cmd")
+    os.system(data.get("cmd", "fixed"))
+""")
+        self.assertNotIn("FLOW-PY-002", [f["rule_id"] for f in findings])
+
 
 if __name__ == "__main__":
     unittest.main()
