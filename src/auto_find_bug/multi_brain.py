@@ -231,7 +231,9 @@ def run_five_brain_scan(
         "python-flow": lambda: _brain_python_flow(source),
         "java-flow": lambda: _brain_java_flow(source),
         "semgrep-local-rules": lambda: _brain_semgrep(source),
-        "public-vulnerability-intel": lambda: _brain_public_intel_with_cache(\n            source, workspace / "bugs" / "public-intel-cache.json", public_intel_cache_ttl_seconds\n        ),
+        "public-vulnerability-intel": lambda: _brain_public_intel_with_cache(
+            source, workspace / "bugs" / "public-intel-cache.json", public_intel_cache_ttl_seconds
+        ),
     }
     results: dict[str, dict[str, Any]] = {}
     with ThreadPoolExecutor(max_workers=5, thread_name_prefix="afb-brain") as pool:
