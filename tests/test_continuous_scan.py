@@ -21,6 +21,24 @@ class ContinuousScanTests(unittest.TestCase):
             second = continuous_scan.source_fingerprint(source)
             self.assertNotEqual(first, second)
 
+
+    def test_fingerprint_detects_same_size_edit_with_restored_mtime(self):
+        import os
+
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source"
+            source.mkdir()
+            target = source / "app.py"
+            target.write_text("x = 1\\n", encoding="utf-8")
+            original = target.stat()
+            first = continuous_scan.source_fingerprint(source)
+            target.write_text("x = 2\\n", encoding="utf-8")
+            os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns))
+            second = continuous_scan.source_fingerprint(source)
+            self.assertEqual(target.stat().st_size, original.st_size)
+            self.assertEqual(target.stat().st_mtime_ns, original.st_mtime_ns)
+            self.assertNotEqual(first, second)
+
     def test_watcher_scans_immediately_and_preserves_history_on_stop(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "source"
