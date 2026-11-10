@@ -62,6 +62,12 @@ def source_fingerprint(source_path: str | Path) -> str:
             continue
         digest.update(path.name.encode("utf-8", "replace"))
         digest.update(f":{stat.st_size}:{stat.st_mtime_ns}".encode())
+        try:
+            with path.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(chunk)
+        except OSError:
+            digest.update(b"<unreadable>")
     return digest.hexdigest()
 
 
