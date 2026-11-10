@@ -9,6 +9,7 @@ slower refresh interval. It never probes scope hosts or executes project code.
 import hashlib
 import json
 import os
+import shutil
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -58,16 +59,25 @@ def source_fingerprint(source_path: str | Path) -> str:
 
 
 def _append_history(workspace: Path, result: dict) -> None:
-    history = workspace / "bugs" / "scan-history.jsonl"
-    history.parent.mkdir(parents=True, exist_ok=True)
+    bugs_dir = workspace / "bugs"
+    bugs_dir.mkdir(parents=True, exist_ok=True)
+    history = bugs_dir / "scan-history.jsonl"
+    timestamp = datetime.now(timezone.utc)
+    cycle_id = timestamp.strftime("%Y%m%dT%H%M%S%fZ")
+    snapshot_dir = bugs_dir / "history" / cycle_id
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(result["findings_path"], snapshot_dir / "findings.json")
+    shutil.copy2(result["report_path"], snapshot_dir / "report.md")
     record = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": timestamp.isoformat(),
+        "cycle_id": cycle_id,
         "status": result["status"],
         "finding_count": result["finding_count"],
         "brain_statuses": result["brain_statuses"],
         "files_scanned": result["files_scanned"],
         "findings_path": result["findings_path"],
         "report_path": result["report_path"],
+        "snapshot_directory": str(snapshot_dir),
     }
     with history.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -94,18 +104,42 @@ def watch_five_brain_scan(
     if poll_seconds < 1 or refresh_seconds < poll_seconds:
         raise ValueError("Watch intervals must be positive and refresh_seconds >= poll_seconds.")
 
+    state_path = workspace / "bugs" / "scan-state.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
     last_fingerprint = None
     last_scan = 0.0
-    while True:
-        fingerprint = source_fingerprint(source)
-        now = time.monotonic()
-        changed = fingerprint != last_fingerprint
-        refresh_due = now - last_scan >= refresh_seconds
-        if changed or refresh_due:
-            result = run_five_brain_scan(source, workspace)
-            _append_history(workspace, result)
-            last_fingerprint = fingerprint
-            last_scan = time.monotonic()
-            if on_scan:
-                on_scan(result)
-        time.sleep(poll_seconds)
+    state = {
+        "status": "watching",
+        "source": str(source),
+        "workspace": str(workspace),
+        "poll_seconds": poll_seconds,
+        "refresh_seconds": refresh_seconds,
+        "target_network_activity": "none",
+    }
+    try:
+        while True:
+            fingerprint = source_fingerprint(source)
+            now = time.monotonic()
+            changed = fingerprint != last_fingerprint
+            refresh_due = now - last_scan >= refresh_seconds
+            if changed or refresh_due:
+                result = run_five_brain_scan(source, workspace)
+                _append_history(workspace, result)
+                last_fingerprint = fingerprint
+                last_scan = time.monotonic()
+                state["last_scan_at"] = datetime.now(timezone.utc).isoformat()
+                state["last_scan_status"] = result["status"]
+                state["last_finding_count"] = result["finding_count"]
+                state["history_path"] = str(workspace / "bugs" / "scan-history.jsonl")
+                temporary = state_path.with_suffix(".json.tmp")
+                temporary.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+                temporary.replace(state_path)
+                if on_scan:
+                    on_scan(result)
+            time.sleep(poll_seconds)
+    finally:
+        state["status"] = "stopped"
+        state["stopped_at"] = datetime.now(timezone.utc).isoformat()
+        temporary = state_path.with_suffix(".json.tmp")
+        temporary.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(state_path)
