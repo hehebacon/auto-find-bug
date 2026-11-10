@@ -101,7 +101,7 @@ auto-find-bug code-audit ./my-project --format json --output reports/code-review
 
 ## Workspace source review and finding triage
 
-Policy import now offers to attach a local source tree and immediately starts the continuous five-brain watcher when one is supplied. If no source tree is supplied, the workspace records `waiting_for_local_source`; importing a policy or scope inventory alone is not vulnerability discovery. To attach local static-analysis review leads to an existing workspace, run:
+Policy import automatically creates or reuses the matching workspace and starts its continuous five-brain watcher without asking for a source path. The default source drop-folder is `<workspace>/source/`; set `AFB_SOURCE_ROOT` to a fixed local source directory if desired. If the folder is empty, the watcher remains in `waiting_for_source` and does not claim a clean result. To attach local static-analysis review leads to an existing workspace manually, run:
 
 ```bash
 auto-find-bug review-source \
@@ -196,7 +196,7 @@ After a policy import, AFB automatically creates or reuses the workspace for tha
 - The default local source drop-folder is `<workspace>/source/`; put the authorized source tree there.
 - Set `AFB_SOURCE_ROOT=/absolute/path/to/source` to use a fixed local source folder instead. AFB saves the selected path in `bugs/scan-config.json`.
 - Re-importing the same policy URL reuses its latest workspace and saved source path, then starts the watcher again automatically.
-- The first five-brain scan starts immediately.
+- The first five-brain scan starts as soon as at least one non-empty source file is present; an empty source folder stays in `waiting_for_source`.
 - Local source changes trigger another scan cycle.
 - Public advisory correlation refreshes every 15 minutes by default.
 - Each cycle refreshes `bugs/findings.json` and `bugs/report.md`; append-only history is stored in `bugs/scan-history.jsonl`, with full per-cycle report snapshots under `bugs/history/<cycle-id>/`.
