@@ -122,13 +122,21 @@ def _brain_public_intel(source: Path) -> dict[str, Any]:
 def _brain_public_intel_with_cache(
     source: Path, cache_path: Path, ttl_seconds: int
 ) -> dict[str, Any]:
+    dependencies = discover_dependencies(source)
+    dependency_signature = hashlib.sha256(
+        json.dumps(dependencies.get("dependencies", []), sort_keys=True).encode("utf-8")
+    ).hexdigest()
     if ttl_seconds > 0 and cache_path.is_file():
         try:
             cached = json.loads(cache_path.read_text(encoding="utf-8"))
             age = time.time() - float(cached["cached_at"])
-            if cached.get("source") == str(source) and 0 <= age < ttl_seconds:
+            if (
+                cached.get("source") == str(source)
+                and cached.get("dependency_signature") == dependency_signature
+                and 0 <= age < ttl_seconds
+            ):
                 result = dict(cached["result"])
-                result["note"] = (result.get("note", "") + " Public advisory result reused from cache to respect the refresh interval.").strip()
+                result["note"] = (result.get("note", "") + " Public advisory result reused from cache to respect the refresh interval; dependency manifest signature is unchanged.").strip()
                 return result
         except (OSError, ValueError, KeyError, TypeError):
             pass
@@ -139,6 +147,7 @@ def _brain_public_intel_with_cache(
         _write_json(cache_path, {
             "cached_at": time.time(),
             "source": str(source),
+            "dependency_signature": dependency_signature,
             "result": result,
         })
     return result
