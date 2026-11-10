@@ -26,14 +26,8 @@ IGNORED_DIRS = {
 def source_fingerprint(source_path: str | Path) -> str:
     source = Path(source_path).expanduser().resolve()
     digest = hashlib.sha256()
-    paths = [source] if source.is_file() else (
-        path for root, dirs, files in os.walk(source, followlinks=False)
-        for dirname in list(dirs)
-        if dirname not in IGNORED_DIRS
-        for path in ()
-    )
     if source.is_file():
-        candidates = paths
+        candidates = [source]
     else:
         candidates = []
         for root, dirs, files in os.walk(source, followlinks=False):
