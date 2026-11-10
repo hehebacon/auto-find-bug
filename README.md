@@ -192,7 +192,10 @@ The five brains analyze local source files in parallel. The only network request
 
 ## Automatic continuous five-brain scanning
 
-After a policy import, AFB asks for a local source-project path. Supplying one starts the five brains immediately and keeps them running as a watcher:
+After a policy import, AFB automatically creates or reuses the workspace for that exact policy URL and starts the five-brain watcher without asking for a source path:
+- The default local source drop-folder is `<workspace>/source/`; put the authorized source tree there.
+- Set `AFB_SOURCE_ROOT=/absolute/path/to/source` to use a fixed local source folder instead. AFB saves the selected path in `bugs/scan-config.json`.
+- Re-importing the same policy URL reuses its latest workspace and saved source path, then starts the watcher again automatically.
 - The first five-brain scan starts immediately.
 - Local source changes trigger another scan cycle.
 - Public advisory correlation refreshes every 15 minutes by default.
@@ -200,11 +203,7 @@ After a policy import, AFB asks for a local source-project path. Supplying one s
 - Public advisory results are cached for the refresh interval to avoid repeated upstream requests during rapid local edits; a changed dependency-manifest signature invalidates that cache immediately.
 - Stop the watcher with Ctrl+C. The last results and history remain on disk.
 
-If the source path is not available during policy import, attach it later:
-
-```bash
-auto-find-bug watch-scan /path/to/local-source /path/to/existing-scope-workspace
-```
+The watcher starts even when the drop-folder is empty; the results must remain incomplete until actual source files are present. The workspace is not a substitute for the target application's source code.
 
 Optional watcher intervals:
 
@@ -234,7 +233,7 @@ CI runs the core suite on Python 3.11 and 3.12, installs the optional APK/Semgre
 
 ## Output
 
-Each run creates a separate workspace under `tools/outdata/<program-handle>/<timestamp>/` with policy snapshots, policy analysis, scope inventory/candidates, exclusions/conflicts for manual review, vulnerability taxonomy, findings placeholders, and reports.
+The first import creates a workspace; subsequent imports of the same policy URL reuse the latest workspace so saved scan configuration and history remain connected. Each new program creates a separate workspace under `tools/outdata/<program-handle>/<timestamp>/` with policy snapshots, policy analysis, scope inventory/candidates, exclusions/conflicts for manual review, vulnerability taxonomy, findings placeholders, and reports.
 
 ## Status
 
