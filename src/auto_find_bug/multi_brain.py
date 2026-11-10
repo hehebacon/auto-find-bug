@@ -22,11 +22,12 @@ from .semgrep_analysis import analyze_with_semgrep
 from .source_intelligence import discover_dependencies
 
 
-def _brain_result(name: str, result: dict[str, Any], *, available: bool = True) -> dict[str, Any]:
+def _brain_result(name: str, result: dict[str, Any], *, available: bool = True, complete: bool = True) -> dict[str, Any]:
     findings = result.get("findings") or []
+    status = "unavailable" if not available else ("complete" if complete else "incomplete")
     return {
         "brain": name,
-        "status": "complete" if available else "unavailable",
+        "status": status,
         "available": available,
         "files_analyzed": result.get("files_analyzed", 0),
         "finding_count": len(findings),
@@ -37,7 +38,8 @@ def _brain_result(name: str, result: dict[str, Any], *, available: bool = True) 
 
 
 def _brain_code_audit(source: Path) -> dict[str, Any]:
-    return _brain_result("code-audit", code_audit.analyze_source(source))
+    result = code_audit.analyze_source(source)
+    return _brain_result("code-audit", result, complete=result.get("files_skipped_large", 0) == 0)
 
 
 def _brain_python_flow(source: Path) -> dict[str, Any]:
@@ -47,12 +49,21 @@ def _brain_python_flow(source: Path) -> dict[str, Any]:
 
 def _brain_java_flow(source: Path) -> dict[str, Any]:
     result = analyze_java_flows(source)
-    return _brain_result("java-flow", result, available=bool(result.get("available", False)))
+    return _brain_result(
+        "java-flow", result,
+        available=bool(result.get("available", False)),
+        complete=not bool(result.get("unparsed_files")),
+    )
 
 
 def _brain_semgrep(source: Path) -> dict[str, Any]:
     result = analyze_with_semgrep(source)
-    return _brain_result("semgrep-local-rules", result, available=bool(result.get("available", False)))
+    return _brain_result(
+        "semgrep-local-rules", result,
+        available=bool(result.get("available", False)),
+        complete=not bool(result.get("diagnostics")) and not bool(result.get("truncated_findings"))
+        and result.get("exit_code") in (0, 1),
+    )
 
 
 def _brain_public_intel(source: Path) -> dict[str, Any]:
@@ -88,7 +99,7 @@ def _brain_public_intel(source: Path) -> dict[str, Any]:
             })
     return {
         "brain": "public-vulnerability-intel",
-        "status": "complete",
+        "status": "complete" if dependencies["manifests"] and not osv.get("skipped_without_exact_version") and not osv.get("skipped_batch_limit") else "incomplete",
         "available": True,
         "files_analyzed": 0,
         "finding_count": len(findings),
