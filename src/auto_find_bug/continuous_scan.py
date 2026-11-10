@@ -123,7 +123,7 @@ def watch_five_brain_scan(
             changed = fingerprint != last_fingerprint
             refresh_due = now - last_scan >= refresh_seconds
             if changed or refresh_due:
-                result = run_five_brain_scan(source, workspace)
+                result = run_five_brain_scan(\n                    source, workspace, public_intel_cache_ttl_seconds=refresh_seconds\n                )
                 _append_history(workspace, result)
                 last_fingerprint = fingerprint
                 last_scan = time.monotonic()
