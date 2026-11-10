@@ -167,6 +167,29 @@ APK analysis validates and inventories the local archive, records its hash, mani
 
 Results are saved under source-intelligence/, online-intelligence/, findings/findings.json, and reports/source-intelligence-report.md. New records start as potential; existing reviewer notes and triage statuses are preserved. Static findings and public advisory matches require human review and do not establish impact or applicability.
 
+## Parallel five-brain scope scan
+
+Run five independent local analysis engines concurrently against a source tree, then write the consolidated review leads inside the selected scope workspace:
+
+```bash
+auto-find-bug multi-scan /path/to/local-source /path/to/existing-scope-workspace
+```
+
+The five brains are:
+1. Local multi-language heuristic/static checks (`code-audit`).
+2. Path-sensitive Python source-to-sink analysis.
+3. Java AST source-to-sink analysis.
+4. Semgrep using only the rules bundled with this package.
+5. Public vulnerability intelligence: exact-version OSV dependency correlation, enriched by matching CVE aliases against the CISA KEV catalog.
+
+Results are written only inside the supplied scope workspace:
+- `bugs/findings.json` — deduplicated findings, per-brain execution status, and coverage notes.
+- `bugs/report.md` — readable report and final scan status.
+
+The terminal prints `NO BUGS APPEARED / FOUND ON THIS SCOPE` only if all five brains completed and returned no findings. If any brain is missing, unavailable, or fails, the run is marked `incomplete`; it must not be interpreted as a clean scope. A finding is a review lead, not a confirmed vulnerability. Exact-version OSV matches and CISA KEV membership do not prove that the application is exploitable or affected at runtime. Public feeds cannot enumerate unpublished vulnerabilities or unknown zero-days.
+
+The five brains analyze local source files in parallel. The only network requests in this mode are to public OSV and CISA KEV advisory services. No scope host is contacted, no payload is sent, and project code is never executed. Java AST and Semgrep engines must be installed for complete five-engine coverage (`pip install -e ".[sast]"`).
+
 ## Safety and interpretation
 
 - Discovered assets are inventory records, not authorization.
