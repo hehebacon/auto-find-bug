@@ -10,6 +10,22 @@ from auto_find_bug import continuous_scan
 
 
 class ContinuousScanTests(unittest.TestCase):
+
+    def test_empty_source_is_not_treated_as_scannable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source"
+            source.mkdir()
+            self.assertFalse(continuous_scan.source_has_files(source))
+            (source / "app.py").write_text("print('review me')\\n", encoding="utf-8")
+            self.assertTrue(continuous_scan.source_has_files(source))
+
+    def test_ignores_generated_directories_when_checking_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source"
+            (source / "node_modules").mkdir(parents=True)
+            (source / "node_modules" / "dependency.js").write_text("x", encoding="utf-8")
+            self.assertFalse(continuous_scan.source_has_files(source))
+
     def test_fingerprint_changes_when_source_changes(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "source"
