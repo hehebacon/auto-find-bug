@@ -9,6 +9,7 @@ limited to public vulnerability advisory services (OSV and CISA KEV).
 import argparse
 import hashlib
 import json
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
@@ -117,6 +118,32 @@ def _brain_public_intel(source: Path) -> dict[str, Any]:
     }
 
 
+
+def _brain_public_intel_with_cache(
+    source: Path, cache_path: Path, ttl_seconds: int
+) -> dict[str, Any]:
+    if ttl_seconds > 0 and cache_path.is_file():
+        try:
+            cached = json.loads(cache_path.read_text(encoding="utf-8"))
+            age = time.time() - float(cached["cached_at"])
+            if cached.get("source") == str(source) and 0 <= age < ttl_seconds:
+                result = dict(cached["result"])
+                result["note"] = (result.get("note", "") + " Public advisory result reused from cache to respect the refresh interval.").strip()
+                return result
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+
+    result = _brain_public_intel(source)
+    if ttl_seconds > 0:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        _write_json(cache_path, {
+            "cached_at": time.time(),
+            "source": str(source),
+            "result": result,
+        })
+    return result
+
+
 def _finding_id(item: dict[str, Any]) -> str:
     identity = "|".join(str(item.get(key, "")) for key in (
         "rule_id", "file", "line", "component", "evidence", "advisory_id"
@@ -187,6 +214,8 @@ def _write_report(path: Path, payload: dict[str, Any]) -> None:
 def run_five_brain_scan(
     source_path: str | Path,
     workspace_path: str | Path,
+    *,
+    public_intel_cache_ttl_seconds: int = 0,
 ) -> dict[str, Any]:
     source = Path(source_path).expanduser().resolve()
     workspace = Path(workspace_path).expanduser().resolve()
@@ -202,7 +231,7 @@ def run_five_brain_scan(
         "python-flow": lambda: _brain_python_flow(source),
         "java-flow": lambda: _brain_java_flow(source),
         "semgrep-local-rules": lambda: _brain_semgrep(source),
-        "public-vulnerability-intel": lambda: _brain_public_intel(source),
+        "public-vulnerability-intel": lambda: _brain_public_intel_with_cache(\n            source, workspace / "bugs" / "public-intel-cache.json", public_intel_cache_ttl_seconds\n        ),
     }
     results: dict[str, dict[str, Any]] = {}
     with ThreadPoolExecutor(max_workers=5, thread_name_prefix="afb-brain") as pool:
