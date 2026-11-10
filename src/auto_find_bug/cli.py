@@ -349,13 +349,13 @@ def _start_policy_auto_scan(workspace: Path) -> None:
         "refresh_seconds": int(config.get("refresh_seconds", 900)),
         "auto_start_on_policy_import": True,
     }
-    config_path.write_text(json.dumps(config, indent=2) + "\\n", encoding="utf-8")
+    config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 
     console.print(Panel(
-        f"Source folder: {source}\\nWorkspace: {workspace}\\n"
-        "Five brains: parallel\\n"
-        "Re-scan: source changes + advisory refresh every 15 minutes\\n"
-        "Stop: Ctrl+C\\nTarget network activity: none",
+        f"Source folder: {source}\nWorkspace: {workspace}\n"
+        "Five brains: parallel\n"
+        "Re-scan: source changes + advisory refresh every 15 minutes\n"
+        "Stop: Ctrl+C\nTarget network activity: none",
         title="AUTOMATIC CONTINUOUS SCAN",
         border_style="cyan",
     ))
@@ -379,7 +379,7 @@ def _start_policy_auto_scan(workspace: Path) -> None:
             on_scan=report,
         )
     except KeyboardInterrupt:
-        console.print("\\n[yellow]Continuous scan paused by operator. Results and history are preserved; re-import this policy to resume.[/yellow]")
+        console.print("\n[yellow]Continuous scan paused by operator. Results and history are preserved; re-import this policy to resume.[/yellow]")
 
 
 
@@ -472,8 +472,8 @@ def _workspace_review_command(args: argparse.Namespace) -> int:
     try:
         result = workspace_review.review_source(args.workspace, args.source)
         console.print(Panel(
-            f"Files scanned: {result['files_scanned']}\\nNew review leads: {result['finding_count']}\\n"
-            f"Status: {result['status']}\\nFindings: {result['findings_path']}\\n"
+            f"Files scanned: {result['files_scanned']}\nNew review leads: {result['finding_count']}\n"
+            f"Status: {result['status']}\nFindings: {result['findings_path']}\n"
             f"Network activity: none",
             title="WORKSPACE SOURCE REVIEW",
             border_style="cyan",
