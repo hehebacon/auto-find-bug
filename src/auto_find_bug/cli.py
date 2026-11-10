@@ -273,6 +273,7 @@ def run() -> None:
             "or held back by exclusion/conflict clues. Other asset types may still exist. "
             "No target checks will run.[/yellow]"
         )
+        _start_policy_auto_scan(workspace)
         return
 
     choices = questionary.checkbox(
@@ -281,12 +282,14 @@ def run() -> None:
         use_shortcuts=True,
     ).ask()
     if not choices:
-        console.print("[yellow]No assets selected. Workspace saved; no checks run.[/yellow]")
+        console.print("[yellow]No assets selected. Workspace saved; local source analysis can still run.[/yellow]")
+        _start_policy_auto_scan(workspace)
         return
 
     selected = normalize_confirmed_assets(choices)
     if not selected:
-        console.print("[yellow]No valid concrete hostnames selected. No checks run.[/yellow]")
+        console.print("[yellow]No valid concrete hostnames selected. Local source analysis can still run.[/yellow]")
+        _start_policy_auto_scan(workspace)
         return
 
     console.print(Panel(
@@ -302,7 +305,8 @@ def run() -> None:
         "I personally verified every selected asset against the current canonical policy and exclusions?",
         default=False,
     ).ask():
-        console.print("[yellow]Confirmation declined. Assets remain unconfirmed; no checks run.[/yellow]")
+        console.print("[yellow]Confirmation declined. Assets remain unconfirmed; local source analysis can still run.[/yellow]")
+        _start_policy_auto_scan(workspace)
         return
 
     _save_scope(workspace, program_url, selected)
