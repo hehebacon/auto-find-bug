@@ -17,7 +17,7 @@ class ContinuousScanTests(unittest.TestCase):
             target = source / "app.py"
             target.write_text("x = 1\n", encoding="utf-8")
             first = continuous_scan.source_fingerprint(source)
-            target.write_text("x = 2\n", encoding="utf-8")
+            target.write_text("x = 222\n", encoding="utf-8")
             second = continuous_scan.source_fingerprint(source)
             self.assertNotEqual(first, second)
 
