@@ -59,8 +59,10 @@ def _brain_public_intel(source: Path) -> dict[str, Any]:
     dependencies = discover_dependencies(source)
     osv = correlate_dependencies(dependencies["dependencies"])
     kev_sync = research.sync_cisa_kev()
-    kev_records = research.list_advisories(limit=500, source="CISA KEV")
-    kev_by_id = {item["id"].upper(): item for item in kev_records}
+    # Read every imported KEV ID; the public catalog is larger than the CLI list limit.
+    with research._connect() as db:
+        kev_ids = {str(row["id"]).upper() for row in db.execute("SELECT id FROM advisories WHERE source = ?", ("CISA KEV",)).fetchall()}
+    kev_by_id = {item: True for item in kev_ids}
     findings: list[dict[str, Any]] = []
     for match in osv.get("results", []):
         for advisory in match.get("advisories", []):
