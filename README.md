@@ -101,7 +101,7 @@ auto-find-bug code-audit ./my-project --format json --output reports/code-review
 
 ## Workspace source review and finding triage
 
-The policy-import workflow deliberately creates an empty `findings/findings.json`; importing a scope inventory is not vulnerability discovery. To attach local static-analysis review leads to an existing workspace, run:
+Policy import now offers to attach a local source tree and immediately starts the continuous five-brain watcher when one is supplied. If no source tree is supplied, the workspace records `waiting_for_local_source`; importing a policy or scope inventory alone is not vulnerability discovery. To attach local static-analysis review leads to an existing workspace, run:
 
 ```bash
 auto-find-bug review-source \
@@ -189,6 +189,29 @@ Results are written only inside the supplied scope workspace:
 The terminal prints `NO BUGS APPEARED / FOUND ON THIS SCOPE` only if all five brains completed and returned no findings. If any brain is missing, unavailable, or fails, the run is marked `incomplete`; it must not be interpreted as a clean scope. A finding is a review lead, not a confirmed vulnerability. Exact-version OSV matches and CISA KEV membership do not prove that the application is exploitable or affected at runtime. Public feeds cannot enumerate unpublished vulnerabilities or unknown zero-days.
 
 The five brains analyze local source files in parallel. The only network requests in this mode are to public OSV and CISA KEV advisory services. No scope host is contacted, no payload is sent, and project code is never executed. Java AST and Semgrep engines must be installed for complete five-engine coverage (`pip install -e ".[sast]"`).
+
+## Automatic continuous five-brain scanning
+
+After a policy import, AFB asks for a local source-project path. Supplying one starts the five brains immediately and keeps them running as a watcher:
+- The first five-brain scan starts immediately.
+- Local source changes trigger another scan cycle.
+- Public advisory correlation refreshes every 15 minutes by default.
+- Each cycle refreshes `bugs/findings.json` and `bugs/report.md`; append-only history is stored in `bugs/scan-history.jsonl`.
+- Stop the watcher with Ctrl+C. The last results and history remain on disk.
+
+If the source path is not available during policy import, attach it later:
+
+```bash
+auto-find-bug watch-scan /path/to/local-source /path/to/existing-scope-workspace
+```
+
+Optional watcher intervals:
+
+```bash
+auto-find-bug watch-scan /path/to/local-source /path/to/existing-scope-workspace --poll-seconds 5 --refresh-seconds 900
+```
+
+The watcher monitors local files only. Its five analysis brains run in parallel for each cycle; they do not run five CPU-heavy scans continuously in a tight loop. It never probes HackerOne assets, sends payloads, logs in, or executes project code. Policy scope data is not source code: without a local source tree, code-analysis brains cannot run and the workspace must remain marked as waiting/incomplete rather than clean.
 
 ## Safety and interpretation
 
