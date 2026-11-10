@@ -7,6 +7,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 import questionary
 from rich.console import Console
@@ -26,7 +27,7 @@ from .reports import write_reports
 from .policy_analysis import write_policy_analysis
 from .scope_review import write_scope_review
 from .scope import extract_scope_candidates, normalize_confirmed_assets
-from .workspace import create_workspace, OUTDATA
+from .workspace import create_workspace, OUTDATA, slugify
 from . import research
 from .research import ResearchError
 from . import code_audit, web_audit, workspace_review, source_intelligence
@@ -80,7 +81,8 @@ def _save_scope(workspace: Path, program_url: str, assets: list[str]) -> None:
 
 def _find_existing_workspace(program_url: str, program_handle: str | None) -> Path | None:
     """Reuse the latest workspace for this exact policy URL."""
-    label = (program_handle or "program").lower()
+    host = urlparse(program_url).hostname or "program"
+    label = slugify(program_handle or host)
     root = OUTDATA / label
     if not root.is_dir():
         return None
