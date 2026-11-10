@@ -53,7 +53,13 @@ class JState:
 def _merge_value(a: JValue, b: JValue) -> JValue:
     origins = tuple(dict.fromkeys((*a.origins, *b.origins)))
     trace = tuple(dict.fromkeys((*a.trace, *b.trace)))
-    constant = a.constant if a.constant is not UNKNOWN and a.constant == b.constant else UNKNOWN
+    # Tainted values must not retain constants that could prune reachable paths.
+    constant = (
+        a.constant
+        if not a.tainted and not b.tainted
+        and a.constant is not UNKNOWN and a.constant == b.constant
+        else UNKNOWN
+    )
     items = None
     if a.items is not None and b.items is not None and len(a.items) == len(b.items):
         items = [_merge_value(x, y) for x, y in zip(a.items, b.items)]
@@ -190,6 +196,8 @@ class JavaFlowAnalyzer:
 
     def _truth(self, node: Any, state: JState, rel: str, depth: int) -> bool | None:
         value = self.expr(node, state, rel, depth)
+        if value.tainted:
+            return None
         if value.constant is not UNKNOWN:
             try: return bool(value.constant)
             except Exception: return None
@@ -458,10 +466,10 @@ class JavaFlowAnalyzer:
                 except (ValueError, SyntaxError):
                     pass
             if member == "equals" and receiver:
-                # equals() returns a boolean, not its argument. If the compared
-                # values are not both constants, keep the branch unknown so both
-                # paths are joined instead of treating the literal argument as
-                # the truth value of the condition.
+                # Never fold a comparison involving tainted data: stale constants
+                # must not prune a reachable branch.
+                if receiver_value.tainted or (args and args[0].tainted):
+                    return JValue()
                 if receiver_value.constant is not UNKNOWN and args and args[0].constant is not UNKNOWN:
                     return JValue(constant=receiver_value.constant == args[0].constant)
                 return JValue()
