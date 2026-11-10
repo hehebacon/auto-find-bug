@@ -71,6 +71,30 @@ def source_fingerprint(source_path: str | Path) -> str:
     return digest.hexdigest()
 
 
+def source_has_files(source_path: str | Path) -> bool:
+    """Return true only when the configured source location contains real files."""
+    source = Path(source_path).expanduser().resolve()
+    if source.is_file():
+        return source.stat().st_size > 0
+    if not source.is_dir():
+        return False
+    for root, dirs, files in os.walk(source, followlinks=False):
+        dirs[:] = [
+            name for name in dirs
+            if name not in IGNORED_DIRS and not (Path(root) / name).is_symlink()
+        ]
+        for name in files:
+            candidate = Path(root) / name
+            if candidate.is_symlink():
+                continue
+            try:
+                if candidate.is_file() and candidate.stat().st_size > 0:
+                    return True
+            except OSError:
+                continue
+    return False
+
+
 def _append_history(workspace: Path, result: dict) -> None:
     bugs_dir = workspace / "bugs"
     bugs_dir.mkdir(parents=True, exist_ok=True)
@@ -137,8 +161,21 @@ def watch_five_brain_scan(
             now = time.monotonic()
             changed = fingerprint != last_fingerprint
             refresh_due = now - last_scan >= refresh_seconds
+            if not source_has_files(source):
+                state["status"] = "waiting_for_source"
+                state["source_files_present"] = False
+                state["note"] = "No non-empty local source files found; no clean result is reported."
+                state["last_checked_at"] = datetime.now(timezone.utc).isoformat()
+                temporary = state_path.with_suffix(".json.tmp")
+                temporary.write_text(json.dumps(state, indent=2) + "\\n", encoding="utf-8")
+                temporary.replace(state_path)
+                last_fingerprint = fingerprint
+                time.sleep(poll_seconds)
+                continue
             if changed or refresh_due:
                 state["status"] = "scanning"
+                state["source_files_present"] = True
+                state.pop("note", None)
                 state["scan_started_at"] = datetime.now(timezone.utc).isoformat()
                 temporary = state_path.with_suffix(".json.tmp")
                 temporary.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
