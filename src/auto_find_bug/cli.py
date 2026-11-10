@@ -439,8 +439,8 @@ def _multi_scan_command(args: argparse.Namespace) -> int:
     try:
         result = run_five_brain_scan(args.source, args.workspace)
         console.print(Panel(
-            f"Status: {result['status']}\\nFindings: {result['finding_count']}\\n"
-            f"Brains: {result['brain_statuses']}\\nFiles analyzed: {result['files_scanned']}\\n"
+            f"Status: {result['status']}\nFindings: {result['finding_count']}\n"
+            f"Brains: {result['brain_statuses']}\nFiles analyzed: {result['files_scanned']}\n"
             f"Results: {result['bugs_directory']}",
             title="PARALLEL FIVE-BRAIN SCOPE SCAN",
             border_style="cyan" if result["status"] == "findings_present" else "green",
