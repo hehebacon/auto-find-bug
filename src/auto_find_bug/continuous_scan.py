@@ -154,6 +154,8 @@ def watch_five_brain_scan(
                         on_scan(result)
                 except Exception as exc:
                     # A failed cycle must not silently terminate the watcher.
+                    # Back off until the next poll interval rather than hot-looping.
+                    last_scan = time.monotonic()
                     state["status"] = "cycle_error"
                     state["last_error"] = f"{type(exc).__name__}: {exc}"
                     state["last_error_at"] = datetime.now(timezone.utc).isoformat()
