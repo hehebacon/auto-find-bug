@@ -11,6 +11,7 @@ from typing import Any
 import xml.etree.ElementTree as ET
 
 from . import code_audit
+from .solidity_logic import analyze_solidity_logic
 
 MAX_APK_BYTES = 200 * 1024 * 1024
 MAX_APK_MEMBER_BYTES = 128 * 1024 * 1024
@@ -227,6 +228,7 @@ def analyze_source(path: str | Path) -> dict[str, Any]:
     flows = analyze_python_flows(path)
     java = analyze_java_flows(path)
     semgrep = analyze_with_semgrep(path)
+    solidity = analyze_solidity_logic(path)
 
     # When the Java AST engine is available, it replaces broad Java taint
     # matches. This keeps Java findings tied to a modeled source-to-sink path.
@@ -242,6 +244,7 @@ def analyze_source(path: str | Path) -> dict[str, Any]:
     result["findings"].extend(flows["findings"])
     result["findings"].extend(java["findings"])
     result["findings"].extend(semgrep_findings)
+    result["findings"].extend(solidity["findings"])
     result["finding_count"] = len(result["findings"])
     result["flow_analysis"] = {
         "python": {
@@ -268,9 +271,16 @@ def analyze_source(path: str | Path) -> dict[str, Any]:
             "finding_count": len(semgrep_findings),
             "note": semgrep["note"],
         },
+        "solidity": {
+            "engine": solidity["engine"],
+            "files_scanned": solidity["files_scanned"],
+            "finding_count": solidity["finding_count"],
+            "limitations": solidity["limitations"],
+        },
     }
     result["limitations"].extend(flows["limitations"])
     result["limitations"].extend(java["limitations"])
+    result["limitations"].extend(solidity["limitations"])
     if not java["available"]:
         result["limitations"].append(java["note"])
     if not semgrep["available"]:
