@@ -167,7 +167,7 @@ def watch_five_brain_scan(
                 state["note"] = "No non-empty local source files found; no clean result is reported."
                 state["last_checked_at"] = datetime.now(timezone.utc).isoformat()
                 temporary = state_path.with_suffix(".json.tmp")
-                temporary.write_text(json.dumps(state, indent=2) + "\\n", encoding="utf-8")
+                temporary.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
                 temporary.replace(state_path)
                 last_fingerprint = fingerprint
                 time.sleep(poll_seconds)
