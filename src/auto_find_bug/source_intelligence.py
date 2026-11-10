@@ -430,6 +430,8 @@ def run_analysis(input_path: str | Path, workspace_path: str | Path | None = Non
         f"- Java AST files: {result.get('flow_analysis', {}).get('java', {}).get('files_analyzed', 0)}",
         f"- Java AST review leads: {result.get('flow_analysis', {}).get('java', {}).get('finding_count', 0)}",
         f"- Java AST available: {result.get('flow_analysis', {}).get('java', {}).get('available', False)}",
+        f"- Solidity files reviewed: {result.get('flow_analysis', {}).get('solidity', {}).get('files_scanned', 0)}",
+        f"- Solidity business-logic review leads: {result.get('flow_analysis', {}).get('solidity', {}).get('finding_count', 0)}",
         f"- Semgrep available: {result.get('flow_analysis', {}).get('semgrep', {}).get('available', False)}",
         f"- Semgrep review leads: {result.get('flow_analysis', {}).get('semgrep', {}).get('finding_count', 0)}", "",
         "## Findings", "",
