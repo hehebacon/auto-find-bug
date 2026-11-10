@@ -328,6 +328,9 @@ def _start_policy_auto_scan(workspace: Path) -> None:
     if not source.exists() or not (source.is_file() or source.is_dir()):
         console.print(f"[yellow]Source path is invalid. Configure it later with: auto-find-bug watch-scan /path/to/local-source {workspace}[/yellow]")
         return
+    if source.is_file() and source.suffix.lower() == ".apk":
+        console.print("[yellow]The continuous five-brain watcher requires a source-code file or project directory; use the existing APK analyze command for APK files.[/yellow]")
+        return
 
     from .continuous_scan import watch_five_brain_scan
 
