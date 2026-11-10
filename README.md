@@ -167,6 +167,14 @@ APK analysis validates and inventories the local archive, records its hash, mani
 
 Results are saved under source-intelligence/, online-intelligence/, findings/findings.json, and reports/source-intelligence-report.md. New records start as potential; existing reviewer notes and triage statuses are preserved. Static findings and public advisory matches require human review and do not establish impact or applicability.
 
+## Solidity business-logic review (experimental)
+
+The local `source scan` pipeline also runs a bounded Solidity lexical review. It emits low-confidence review leads for privileged-looking function names without a recognized local authorization marker, low-level external calls whose result may be ignored, and external calls that appear before later state updates. These signals are intended to guide manual review of access-control boundaries, checks-effects-interactions ordering, and accounting invariants; they are not vulnerability confirmations.
+
+The pass masks comments and string literals, scans local `.sol` files only, and skips files larger than 1 MB. It does not compile contracts, resolve inherited modifiers or proxy storage, model cross-contract calls, prove economic invariants, execute a fork, or send transactions. A function may be correctly protected through inherited or external controls that this lightweight pass cannot see. Every result therefore starts as `potential` and requires a reviewer to inspect the full protocol context.
+
+This is an initial coverage layer, not the final business-logic engine. The next accuracy work should use compiler-backed ASTs and explicit protocol invariants (for example, share/asset accounting, fee-on-transfer handling, role transitions, initialization, and state-machine transitions), with positive and safe-negative regression fixtures before expanding detection claims.
+
 ## Safety and interpretation
 
 - Discovered assets are inventory records, not authorization.
