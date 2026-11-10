@@ -196,7 +196,8 @@ After a policy import, AFB asks for a local source-project path. Supplying one s
 - The first five-brain scan starts immediately.
 - Local source changes trigger another scan cycle.
 - Public advisory correlation refreshes every 15 minutes by default.
-- Each cycle refreshes `bugs/findings.json` and `bugs/report.md`; append-only history is stored in `bugs/scan-history.jsonl`.
+- Each cycle refreshes `bugs/findings.json` and `bugs/report.md`; append-only history is stored in `bugs/scan-history.jsonl`, with full per-cycle report snapshots under `bugs/history/<cycle-id>/`.
+- Public advisory results are cached for the refresh interval to avoid repeated upstream requests during rapid local edits; a changed dependency-manifest signature invalidates that cache immediately.
 - Stop the watcher with Ctrl+C. The last results and history remain on disk.
 
 If the source path is not available during policy import, attach it later:
