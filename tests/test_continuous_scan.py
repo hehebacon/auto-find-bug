@@ -28,6 +28,9 @@ class ContinuousScanTests(unittest.TestCase):
             source.mkdir()
             workspace.mkdir()
             (source / "app.py").write_text("x = 1\n", encoding="utf-8")
+            (workspace / "bugs").mkdir(parents=True)
+            (workspace / "bugs" / "findings.json").write_text("{\"findings\": []}", encoding="utf-8")
+            (workspace / "bugs" / "report.md").write_text("# report", encoding="utf-8")
             result = {
                 "status": "findings_present",
                 "finding_count": 1,
@@ -50,6 +53,9 @@ class ContinuousScanTests(unittest.TestCase):
             record = json.loads(history.read_text(encoding="utf-8").splitlines()[0])
             self.assertEqual(record["finding_count"], 1)
             self.assertEqual(record["status"], "findings_present")
+            self.assertTrue(Path(record["snapshot_directory"], "findings.json").is_file())
+            state = json.loads((workspace / "bugs" / "scan-state.json").read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "stopped")
 
 
 if __name__ == "__main__":
