@@ -152,6 +152,7 @@ def run() -> None:
                     console.print(f"Snapshot classification: {review['counts']}")
                     console.print(f"Canonical policy: {program_url}")
                     console.print("Review the live HackerOne policy and exclusions separately before any research.")
+                    _start_policy_auto_scan(workspace)
                     return
                 except Exception as mirror_exc:
                     log(f"[yellow]Public snapshot unavailable: {type(mirror_exc).__name__}; using manual fallback.[/yellow]")
@@ -297,7 +298,59 @@ def run() -> None:
         "The workspace contains policy analysis, scope review, vulnerability categories, "
         "and report templates. No target requests or automated vulnerability tests were sent."
     )
+    _start_policy_auto_scan(workspace)
 
+
+
+def _start_policy_auto_scan(workspace: Path) -> None:
+    """Start continuous local-source analysis after a policy import."""
+    source_text = Prompt.ask(
+        "[bold cyan]Local source project path for automatic five-brain scanning (Enter to configure later)[/bold cyan]",
+        default="",
+    ).strip()
+    bugs_dir = workspace / "bugs"
+    bugs_dir.mkdir(parents=True, exist_ok=True)
+    if not source_text:
+        state = {
+            "status": "waiting_for_local_source",
+            "note": "Policy import completed. No source tree was supplied, so source-code brains have not run.",
+            "next_step": "Run: auto-find-bug watch-scan /path/to/local-source " + str(workspace),
+            "target_network_activity": "none",
+        }
+        (bugs_dir / "scan-state.json").write_text(
+            json.dumps(state, indent=2) + "\n", encoding="utf-8"
+        )
+        console.print("[yellow]Policy imported. Automatic scan is waiting for a local source path; no target was contacted.[/yellow]")
+        console.print(f"Later: auto-find-bug watch-scan /path/to/local-source {workspace}")
+        return
+
+    source = Path(source_text).expanduser()
+    if not source.exists() or not (source.is_file() or source.is_dir()):
+        console.print(f"[yellow]Source path is invalid. Configure it later with: auto-find-bug watch-scan /path/to/local-source {workspace}[/yellow]")
+        return
+
+    from .continuous_scan import watch_five_brain_scan
+
+    console.print(Panel(
+        f"Source: {source.resolve()}\nWorkspace: {workspace}\n"
+        "5 brains: parallel\n"
+        "Re-scan: immediately on source changes; periodic advisory refresh every 15 minutes\n"
+        "Stop: Ctrl+C\nTarget network activity: none",
+        title="CONTINUOUS FIVE-BRAIN SCAN STARTING",
+        border_style="cyan",
+    ))
+
+    def report(result: dict) -> None:
+        console.print(
+            f"[cyan]Scan cycle complete:[/cyan] status={result['status']} "
+            f"findings={result['finding_count']} brains={result['brain_statuses']}"
+        )
+        console.print(f"[dim]History: {workspace / 'bugs' / 'scan-history.jsonl'}[/dim]")
+
+    try:
+        watch_five_brain_scan(source, workspace, on_scan=report)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Continuous scan stopped by operator. Last results and scan history are preserved.[/yellow]")
 
 def _research_command(args: argparse.Namespace) -> int:
     try:
@@ -492,6 +545,12 @@ def build_parser() -> argparse.ArgumentParser:
     multi_scan_parser.add_argument("source", help="Local source project directory.")
     multi_scan_parser.add_argument("workspace", help="Existing scope workspace; results are saved under workspace/bugs/.")
 
+    watch_parser = commands.add_parser("watch-scan", help="Continuously run five local analysis brains when source files change.")
+    watch_parser.add_argument("source", help="Local source project directory.")
+    watch_parser.add_argument("workspace", help="Existing scope workspace; results and history are saved under workspace/bugs/.")
+    watch_parser.add_argument("--poll-seconds", type=int, default=5, help="How often to check for local edits (default: 5).")
+    watch_parser.add_argument("--refresh-seconds", type=int, default=900, help="Periodic refresh interval for public advisories (default: 900).")
+
     review_parser = commands.add_parser("review-source", help="Import local static-analysis leads into a Bug Bounty workspace.")
     review_parser.add_argument("workspace", help="Existing program workspace directory.")
     review_parser.add_argument("source", help="Local source file or project directory.")
@@ -553,6 +612,18 @@ def main() -> None:
         raise SystemExit(_research_command(args))
     if args.command == "multi-scan":
         raise SystemExit(_multi_scan_command(args))
+    if args.command == "watch-scan":
+        from .continuous_scan import watch_five_brain_scan
+        try:
+            def _watch_report(result: dict) -> None:
+                console.print(f"[cyan]Scan cycle:[/cyan] {result['status']} — {result['finding_count']} finding(s); {result['brain_statuses']}")
+            watch_five_brain_scan(args.source, args.workspace, poll_seconds=args.poll_seconds, refresh_seconds=args.refresh_seconds, on_scan=_watch_report)
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Continuous scan stopped. Results and history preserved.[/yellow]")
+        except (ValueError, OSError, RuntimeError) as exc:
+            console.print(f"[red]Continuous scan failed:[/red] {type(exc).__name__}: {exc}")
+            raise SystemExit(2)
+        return
     if args.command == "review-source":
         raise SystemExit(_workspace_review_command(args))
     if args.command == "triage":
