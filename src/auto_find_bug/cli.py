@@ -29,6 +29,7 @@ from .workspace import create_workspace
 from . import research
 from .research import ResearchError
 from . import code_audit, web_audit, workspace_review, source_intelligence
+from .multi_brain import run_five_brain_scan
 
 console = Console()
 
@@ -433,6 +434,29 @@ def _source_intelligence_command(args: argparse.Namespace) -> int:
 
 
 
+
+def _multi_scan_command(args: argparse.Namespace) -> int:
+    try:
+        result = run_five_brain_scan(args.source, args.workspace)
+        console.print(Panel(
+            f"Status: {result['status']}\\nFindings: {result['finding_count']}\\n"
+            f"Brains: {result['brain_statuses']}\\nFiles analyzed: {result['files_scanned']}\\n"
+            f"Results: {result['bugs_directory']}",
+            title="PARALLEL FIVE-BRAIN SCOPE SCAN",
+            border_style="cyan" if result["status"] == "findings_present" else "green",
+        ))
+        if result["status"] == "clean":
+            console.print("[green]NO BUGS APPEARED / FOUND ON THIS SCOPE[/green]")
+        elif result["status"] == "incomplete":
+            console.print("[yellow]SCAN INCOMPLETE — do not interpret this as a clean scope.[/yellow]")
+        else:
+            console.print(f"[yellow]{result['finding_count']} review lead(s) saved under bugs/.[/yellow]")
+        return 0
+    except (ValueError, OSError, RuntimeError) as exc:
+        console.print(f"[red]Five-brain scan failed:[/red] {type(exc).__name__}: {exc}")
+        return 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="auto-find-bug",
@@ -463,6 +487,10 @@ def build_parser() -> argparse.ArgumentParser:
     analyze_parser.add_argument("path", help="Local source project directory or .apk file.")
     analyze_parser.add_argument("--workspace", help="Existing workspace to receive normalized findings.")
     analyze_parser.add_argument("--online", action="store_true", help="Query OSV for exact dependency versions.")
+
+    multi_scan_parser = commands.add_parser("multi-scan", help="Run five independent analysis brains concurrently for one scope workspace.")
+    multi_scan_parser.add_argument("source", help="Local source project directory.")
+    multi_scan_parser.add_argument("workspace", help="Existing scope workspace; results are saved under workspace/bugs/.")
 
     review_parser = commands.add_parser("review-source", help="Import local static-analysis leads into a Bug Bounty workspace.")
     review_parser.add_argument("workspace", help="Existing program workspace directory.")
@@ -523,6 +551,8 @@ def main() -> None:
         raise SystemExit(_source_intelligence_command(args))
     if args.command == "research":
         raise SystemExit(_research_command(args))
+    if args.command == "multi-scan":
+        raise SystemExit(_multi_scan_command(args))
     if args.command == "review-source":
         raise SystemExit(_workspace_review_command(args))
     if args.command == "triage":
