@@ -46,6 +46,13 @@ def source_fingerprint(source_path: str | Path) -> str:
                     continue
                 digest.update(str(path.relative_to(source)).encode("utf-8", "replace"))
                 digest.update(f":{stat.st_size}:{stat.st_mtime_ns}".encode())
+                # Hash bytes too: size/mtime alone can miss restored or generated edits.
+                try:
+                    with path.open("rb") as handle:
+                        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                            digest.update(chunk)
+                except OSError:
+                    digest.update(b"<unreadable>")
         return digest.hexdigest()
 
     for path in candidates:
@@ -116,6 +123,8 @@ def watch_five_brain_scan(
         "refresh_seconds": refresh_seconds,
         "target_network_activity": "none",
     }
+    # Make the active watcher state visible before the first potentially long scan.
+    state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
     try:
         while True:
             fingerprint = source_fingerprint(source)
@@ -123,21 +132,34 @@ def watch_five_brain_scan(
             changed = fingerprint != last_fingerprint
             refresh_due = now - last_scan >= refresh_seconds
             if changed or refresh_due:
-                result = run_five_brain_scan(
-                    source, workspace, public_intel_cache_ttl_seconds=refresh_seconds
-                )
-                _append_history(workspace, result)
-                last_fingerprint = fingerprint
-                last_scan = time.monotonic()
-                state["last_scan_at"] = datetime.now(timezone.utc).isoformat()
-                state["last_scan_status"] = result["status"]
-                state["last_finding_count"] = result["finding_count"]
-                state["history_path"] = str(workspace / "bugs" / "scan-history.jsonl")
+                state["status"] = "scanning"
+                state["scan_started_at"] = datetime.now(timezone.utc).isoformat()
                 temporary = state_path.with_suffix(".json.tmp")
                 temporary.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
                 temporary.replace(state_path)
-                if on_scan:
-                    on_scan(result)
+                try:
+                    result = run_five_brain_scan(
+                        source, workspace, public_intel_cache_ttl_seconds=refresh_seconds
+                    )
+                    _append_history(workspace, result)
+                    last_fingerprint = fingerprint
+                    last_scan = time.monotonic()
+                    state["status"] = "watching"
+                    state["last_scan_at"] = datetime.now(timezone.utc).isoformat()
+                    state["last_scan_status"] = result["status"]
+                    state["last_finding_count"] = result["finding_count"]
+                    state["last_brain_statuses"] = result["brain_statuses"]
+                    state["history_path"] = str(workspace / "bugs" / "scan-history.jsonl")
+                    if on_scan:
+                        on_scan(result)
+                except Exception as exc:
+                    # A failed cycle must not silently terminate the watcher.
+                    state["status"] = "cycle_error"
+                    state["last_error"] = f"{type(exc).__name__}: {exc}"
+                    state["last_error_at"] = datetime.now(timezone.utc).isoformat()
+                temporary = state_path.with_suffix(".json.tmp")
+                temporary.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+                temporary.replace(state_path)
             time.sleep(poll_seconds)
     finally:
         state["status"] = "stopped"
