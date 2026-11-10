@@ -69,6 +69,38 @@ class MultiBrainTests(unittest.TestCase):
             self.assertIn("coverage is incomplete", report)
             self.assertNotIn("NO BUGS APPEARED / FOUND ON THIS SCOPE", report)
 
+    def test_public_intel_cache_reuses_only_unchanged_dependency_set(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source"
+            workspace = root / "workspace"
+            source.mkdir()
+            workspace.mkdir()
+            cache = workspace / "bugs" / "public-intel-cache.json"
+            dependencies = {"dependencies": [{"name": "requests", "version": "2.0"}]}
+            brain_result = {
+                "brain": "public-vulnerability-intel",
+                "status": "complete",
+                "available": True,
+                "files_analyzed": 0,
+                "finding_count": 0,
+                "findings": [],
+                "note": "fresh",
+                "limitations": [],
+            }
+            with (
+                patch.object(multi_brain, "discover_dependencies", side_effect=lambda _source: dependencies),
+                patch.object(multi_brain, "_brain_public_intel", return_value=brain_result) as run_brain,
+            ):
+                multi_brain._brain_public_intel_with_cache(source, cache, 900)
+                cached = multi_brain._brain_public_intel_with_cache(source, cache, 900)
+                self.assertIn("reused from cache", cached["note"])
+                self.assertEqual(run_brain.call_count, 1)
+
+                dependencies["dependencies"] = [{"name": "requests", "version": "2.1"}]
+                multi_brain._brain_public_intel_with_cache(source, cache, 900)
+                self.assertEqual(run_brain.call_count, 2)
+
     def test_findings_are_deduplicated_and_saved(self):
         with tempfile.TemporaryDirectory() as tmp:
             source, workspace = self._workspace(tmp)
