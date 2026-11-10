@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 import questionary
 from rich.console import Console
@@ -25,10 +27,11 @@ from .reports import write_reports
 from .policy_analysis import write_policy_analysis
 from .scope_review import write_scope_review
 from .scope import extract_scope_candidates, normalize_confirmed_assets
-from .workspace import create_workspace
+from .workspace import create_workspace, OUTDATA, slugify
 from . import research
 from .research import ResearchError
 from . import code_audit, web_audit, workspace_review, source_intelligence
+from .multi_brain import run_five_brain_scan
 
 console = Console()
 
@@ -76,6 +79,23 @@ def _save_scope(workspace: Path, program_url: str, assets: list[str]) -> None:
     )
 
 
+def _find_existing_workspace(program_url: str, program_handle: str | None) -> Path | None:
+    """Reuse the latest workspace for this exact policy URL."""
+    host = urlparse(program_url).hostname or "program"
+    label = slugify(program_handle or host)
+    root = OUTDATA / label
+    if not root.is_dir():
+        return None
+    matches: list[Path] = []
+    for candidate in root.iterdir():
+        if not candidate.is_dir():
+            continue
+        project_file = candidate / "project.md"
+        if project_file.is_file() and f"- Program URL: {program_url}" in project_file.read_text(encoding="utf-8", errors="replace"):
+            matches.append(candidate)
+    return max(matches, key=lambda item: item.name) if matches else None
+
+
 def run() -> None:
     boot()
     console.print()
@@ -87,8 +107,12 @@ def run() -> None:
         return
 
     program_handle = hackerone_handle_from_url(program_url)
-    workspace = create_workspace(program_url, program_name=program_handle)
-    log(f"Created workspace: {workspace}")
+    workspace = _find_existing_workspace(program_url, program_handle)
+    if workspace is None:
+        workspace = create_workspace(program_url, program_name=program_handle)
+        log(f"Created workspace: {workspace}")
+    else:
+        log(f"Reusing existing workspace: {workspace}")
 
     try:
         with console.status("[cyan]Fetching the supplied public policy page..."):
@@ -151,6 +175,7 @@ def run() -> None:
                     console.print(f"Snapshot classification: {review['counts']}")
                     console.print(f"Canonical policy: {program_url}")
                     console.print("Review the live HackerOne policy and exclusions separately before any research.")
+                    _start_policy_auto_scan(workspace)
                     return
                 except Exception as mirror_exc:
                     log(f"[yellow]Public snapshot unavailable: {type(mirror_exc).__name__}; using manual fallback.[/yellow]")
@@ -250,6 +275,7 @@ def run() -> None:
             "or held back by exclusion/conflict clues. Other asset types may still exist. "
             "No target checks will run.[/yellow]"
         )
+        _start_policy_auto_scan(workspace)
         return
 
     choices = questionary.checkbox(
@@ -258,12 +284,14 @@ def run() -> None:
         use_shortcuts=True,
     ).ask()
     if not choices:
-        console.print("[yellow]No assets selected. Workspace saved; no checks run.[/yellow]")
+        console.print("[yellow]No assets selected. Workspace saved; local source analysis can still run.[/yellow]")
+        _start_policy_auto_scan(workspace)
         return
 
     selected = normalize_confirmed_assets(choices)
     if not selected:
-        console.print("[yellow]No valid concrete hostnames selected. No checks run.[/yellow]")
+        console.print("[yellow]No valid concrete hostnames selected. Local source analysis can still run.[/yellow]")
+        _start_policy_auto_scan(workspace)
         return
 
     console.print(Panel(
@@ -279,7 +307,8 @@ def run() -> None:
         "I personally verified every selected asset against the current canonical policy and exclusions?",
         default=False,
     ).ask():
-        console.print("[yellow]Confirmation declined. Assets remain unconfirmed; no checks run.[/yellow]")
+        console.print("[yellow]Confirmation declined. Assets remain unconfirmed; local source analysis can still run.[/yellow]")
+        _start_policy_auto_scan(workspace)
         return
 
     _save_scope(workspace, program_url, selected)
@@ -296,6 +325,64 @@ def run() -> None:
         "The workspace contains policy analysis, scope review, vulnerability categories, "
         "and report templates. No target requests or automated vulnerability tests were sent."
     )
+    _start_policy_auto_scan(workspace)
+
+
+
+def _start_policy_auto_scan(workspace: Path) -> None:
+    """Start the saved continuous scan automatically; no source-path prompt."""
+    bugs_dir = workspace / "bugs"
+    bugs_dir.mkdir(parents=True, exist_ok=True)
+    config_path = bugs_dir / "scan-config.json"
+    config = {}
+    if config_path.is_file():
+        try:
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            config = {}
+
+    # First run uses a predictable drop-folder. Later imports reuse the saved path.
+    source_value = os.environ.get("AFB_SOURCE_ROOT") or config.get("source_path")
+    source = Path(source_value).expanduser().resolve() if source_value else (workspace / "source").resolve()
+    source.mkdir(parents=True, exist_ok=True)
+    config = {
+        "source_path": str(source),
+        "poll_seconds": int(config.get("poll_seconds", 5)),
+        "refresh_seconds": int(config.get("refresh_seconds", 900)),
+        "auto_start_on_policy_import": True,
+    }
+    config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+
+    console.print(Panel(
+        f"Source folder: {source}\nWorkspace: {workspace}\n"
+        "Five brains: parallel\n"
+        "Re-scan: source changes + advisory refresh every 15 minutes\n"
+        "Stop: Ctrl+C\nTarget network activity: none",
+        title="AUTOMATIC CONTINUOUS SCAN",
+        border_style="cyan",
+    ))
+    console.print("[dim]Place the authorized local source tree in the saved source folder. "
+                  "On the next import of this same program, AFB reuses this workspace and starts the watcher automatically.[/dim]")
+
+    from .continuous_scan import watch_five_brain_scan
+
+    def report(result: dict) -> None:
+        console.print(
+            f"[cyan]Scan cycle complete:[/cyan] status={result['status']} "
+            f"findings={result['finding_count']} brains={result['brain_statuses']}"
+        )
+        console.print(f"[dim]History: {workspace / 'bugs' / 'scan-history.jsonl'}[/dim]")
+
+    try:
+        watch_five_brain_scan(
+            source, workspace,
+            poll_seconds=config["poll_seconds"],
+            refresh_seconds=config["refresh_seconds"],
+            on_scan=report,
+        )
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Continuous scan paused by operator. Results and history are preserved; re-import this policy to resume.[/yellow]")
+
 
 
 def _research_command(args: argparse.Namespace) -> int:
@@ -387,8 +474,8 @@ def _workspace_review_command(args: argparse.Namespace) -> int:
     try:
         result = workspace_review.review_source(args.workspace, args.source)
         console.print(Panel(
-            f"Files scanned: {result['files_scanned']}\\nNew review leads: {result['finding_count']}\\n"
-            f"Status: {result['status']}\\nFindings: {result['findings_path']}\\n"
+            f"Files scanned: {result['files_scanned']}\nNew review leads: {result['finding_count']}\n"
+            f"Status: {result['status']}\nFindings: {result['findings_path']}\n"
             f"Network activity: none",
             title="WORKSPACE SOURCE REVIEW",
             border_style="cyan",
@@ -433,6 +520,29 @@ def _source_intelligence_command(args: argparse.Namespace) -> int:
 
 
 
+
+def _multi_scan_command(args: argparse.Namespace) -> int:
+    try:
+        result = run_five_brain_scan(args.source, args.workspace)
+        console.print(Panel(
+            f"Status: {result['status']}\nFindings: {result['finding_count']}\n"
+            f"Brains: {result['brain_statuses']}\nFiles analyzed: {result['files_scanned']}\n"
+            f"Results: {result['bugs_directory']}",
+            title="PARALLEL FIVE-BRAIN SCOPE SCAN",
+            border_style="cyan" if result["status"] == "findings_present" else "green",
+        ))
+        if result["status"] == "clean":
+            console.print("[green]NO BUGS APPEARED / FOUND ON THIS SCOPE[/green]")
+        elif result["status"] == "incomplete":
+            console.print("[yellow]SCAN INCOMPLETE — do not interpret this as a clean scope.[/yellow]")
+        else:
+            console.print(f"[yellow]{result['finding_count']} review lead(s) saved under bugs/.[/yellow]")
+        return 0
+    except (ValueError, OSError, RuntimeError) as exc:
+        console.print(f"[red]Five-brain scan failed:[/red] {type(exc).__name__}: {exc}")
+        return 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="auto-find-bug",
@@ -463,6 +573,16 @@ def build_parser() -> argparse.ArgumentParser:
     analyze_parser.add_argument("path", help="Local source project directory or .apk file.")
     analyze_parser.add_argument("--workspace", help="Existing workspace to receive normalized findings.")
     analyze_parser.add_argument("--online", action="store_true", help="Query OSV for exact dependency versions.")
+
+    multi_scan_parser = commands.add_parser("multi-scan", help="Run five independent analysis brains concurrently for one scope workspace.")
+    multi_scan_parser.add_argument("source", help="Local source project directory.")
+    multi_scan_parser.add_argument("workspace", help="Existing scope workspace; results are saved under workspace/bugs/.")
+
+    watch_parser = commands.add_parser("watch-scan", help="Continuously run five local analysis brains when source files change.")
+    watch_parser.add_argument("source", help="Local source project directory.")
+    watch_parser.add_argument("workspace", help="Existing scope workspace; results and history are saved under workspace/bugs/.")
+    watch_parser.add_argument("--poll-seconds", type=int, default=5, help="How often to check for local edits (default: 5).")
+    watch_parser.add_argument("--refresh-seconds", type=int, default=900, help="Periodic refresh interval for public advisories (default: 900).")
 
     review_parser = commands.add_parser("review-source", help="Import local static-analysis leads into a Bug Bounty workspace.")
     review_parser.add_argument("workspace", help="Existing program workspace directory.")
@@ -523,6 +643,20 @@ def main() -> None:
         raise SystemExit(_source_intelligence_command(args))
     if args.command == "research":
         raise SystemExit(_research_command(args))
+    if args.command == "multi-scan":
+        raise SystemExit(_multi_scan_command(args))
+    if args.command == "watch-scan":
+        from .continuous_scan import watch_five_brain_scan
+        try:
+            def _watch_report(result: dict) -> None:
+                console.print(f"[cyan]Scan cycle:[/cyan] {result['status']} — {result['finding_count']} finding(s); {result['brain_statuses']}")
+            watch_five_brain_scan(args.source, args.workspace, poll_seconds=args.poll_seconds, refresh_seconds=args.refresh_seconds, on_scan=_watch_report)
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Continuous scan stopped. Results and history preserved.[/yellow]")
+        except (ValueError, OSError, RuntimeError) as exc:
+            console.print(f"[red]Continuous scan failed:[/red] {type(exc).__name__}: {exc}")
+            raise SystemExit(2)
+        return
     if args.command == "review-source":
         raise SystemExit(_workspace_review_command(args))
     if args.command == "triage":

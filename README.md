@@ -101,7 +101,7 @@ auto-find-bug code-audit ./my-project --format json --output reports/code-review
 
 ## Workspace source review and finding triage
 
-The policy-import workflow deliberately creates an empty `findings/findings.json`; importing a scope inventory is not vulnerability discovery. To attach local static-analysis review leads to an existing workspace, run:
+Policy import automatically creates or reuses the matching workspace and starts its continuous five-brain watcher without asking for a source path. The default source drop-folder is `<workspace>/source/`; set `AFB_SOURCE_ROOT` to a fixed local source directory if desired. If the folder is empty, the watcher remains in `waiting_for_source` and does not claim a clean result. To attach local static-analysis review leads to an existing workspace manually, run:
 
 ```bash
 auto-find-bug review-source \
@@ -167,6 +167,52 @@ APK analysis validates and inventories the local archive, records its hash, mani
 
 Results are saved under source-intelligence/, online-intelligence/, findings/findings.json, and reports/source-intelligence-report.md. New records start as potential; existing reviewer notes and triage statuses are preserved. Static findings and public advisory matches require human review and do not establish impact or applicability.
 
+## Parallel five-brain scope scan
+
+Run five independent local analysis engines concurrently against a source tree, then write the consolidated review leads inside the selected scope workspace:
+
+```bash
+auto-find-bug multi-scan /path/to/local-source /path/to/existing-scope-workspace
+```
+
+The five brains are:
+1. Local multi-language heuristic/static checks (`code-audit`).
+2. Path-sensitive Python source-to-sink analysis.
+3. Java AST source-to-sink analysis.
+4. Semgrep using only the rules bundled with this package.
+5. Public vulnerability intelligence: exact-version OSV dependency correlation, enriched by matching CVE aliases against the CISA KEV catalog.
+
+Results are written only inside the supplied scope workspace:
+- `bugs/findings.json` — deduplicated findings, per-brain execution status, and coverage notes.
+- `bugs/report.md` — readable report and final scan status.
+
+The terminal prints `NO BUGS APPEARED / FOUND ON THIS SCOPE` only if all five brains completed and returned no findings. If any brain is missing, unavailable, or fails, the run is marked `incomplete`; it must not be interpreted as a clean scope. A finding is a review lead, not a confirmed vulnerability. Exact-version OSV matches and CISA KEV membership do not prove that the application is exploitable or affected at runtime. Public feeds cannot enumerate unpublished vulnerabilities or unknown zero-days.
+
+The five brains analyze local source files in parallel. The only network requests in this mode are to public OSV and CISA KEV advisory services. No scope host is contacted, no payload is sent, and project code is never executed. Java AST and Semgrep engines must be installed for complete five-engine coverage (`pip install -e ".[sast]"`).
+
+## Automatic continuous five-brain scanning
+
+After a policy import, AFB automatically creates or reuses the workspace for that exact policy URL and starts the five-brain watcher without asking for a source path:
+- The default local source drop-folder is `<workspace>/source/`; put the authorized source tree there.
+- Set `AFB_SOURCE_ROOT=/absolute/path/to/source` to use a fixed local source folder instead. AFB saves the selected path in `bugs/scan-config.json`.
+- Re-importing the same policy URL reuses its latest workspace and saved source path, then starts the watcher again automatically.
+- The first five-brain scan starts as soon as at least one non-empty source file is present; an empty source folder stays in `waiting_for_source`.
+- Local source changes trigger another scan cycle.
+- Public advisory correlation refreshes every 15 minutes by default.
+- Each cycle refreshes `bugs/findings.json` and `bugs/report.md`; append-only history is stored in `bugs/scan-history.jsonl`, with full per-cycle report snapshots under `bugs/history/<cycle-id>/`.
+- Public advisory results are cached for the refresh interval to avoid repeated upstream requests during rapid local edits; a changed dependency-manifest signature invalidates that cache immediately.
+- Stop the watcher with Ctrl+C. The last results and history remain on disk.
+
+The watcher starts even when the drop-folder is empty; the results must remain incomplete until actual source files are present. The workspace is not a substitute for the target application's source code.
+
+Optional watcher intervals:
+
+```bash
+auto-find-bug watch-scan /path/to/local-source /path/to/existing-scope-workspace --poll-seconds 5 --refresh-seconds 900
+```
+
+The watcher monitors local files only. Its five analysis brains run in parallel for each cycle; they do not run five CPU-heavy scans continuously in a tight loop. It never probes HackerOne assets, sends payloads, logs in, or executes project code. Policy scope data is not source code: without a local source tree, code-analysis brains cannot run and the workspace must remain marked as waiting/incomplete rather than clean.
+
 ## Safety and interpretation
 
 - Discovered assets are inventory records, not authorization.
@@ -187,7 +233,7 @@ CI runs the core suite on Python 3.11 and 3.12, installs the optional APK/Semgre
 
 ## Output
 
-Each run creates a separate workspace under `tools/outdata/<program-handle>/<timestamp>/` with policy snapshots, policy analysis, scope inventory/candidates, exclusions/conflicts for manual review, vulnerability taxonomy, findings placeholders, and reports.
+The first import creates a workspace; subsequent imports of the same policy URL reuse the latest workspace so saved scan configuration and history remain connected. Each new program creates a separate workspace under `tools/outdata/<program-handle>/<timestamp>/` with policy snapshots, policy analysis, scope inventory/candidates, exclusions/conflicts for manual review, vulnerability taxonomy, findings placeholders, and reports.
 
 ## Status
 
