@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from datetime import datetime
@@ -25,7 +26,7 @@ from .reports import write_reports
 from .policy_analysis import write_policy_analysis
 from .scope_review import write_scope_review
 from .scope import extract_scope_candidates, normalize_confirmed_assets
-from .workspace import create_workspace
+from .workspace import create_workspace, OUTDATA
 from . import research
 from .research import ResearchError
 from . import code_audit, web_audit, workspace_review, source_intelligence
@@ -77,6 +78,22 @@ def _save_scope(workspace: Path, program_url: str, assets: list[str]) -> None:
     )
 
 
+def _find_existing_workspace(program_url: str, program_handle: str | None) -> Path | None:
+    """Reuse the latest workspace for this exact policy URL."""
+    label = (program_handle or "program").lower()
+    root = OUTDATA / label
+    if not root.is_dir():
+        return None
+    matches: list[Path] = []
+    for candidate in root.iterdir():
+        if not candidate.is_dir():
+            continue
+        project_file = candidate / "project.md"
+        if project_file.is_file() and f"- Program URL: {program_url}" in project_file.read_text(encoding="utf-8", errors="replace"):
+            matches.append(candidate)
+    return max(matches, key=lambda item: item.name) if matches else None
+
+
 def run() -> None:
     boot()
     console.print()
@@ -88,8 +105,12 @@ def run() -> None:
         return
 
     program_handle = hackerone_handle_from_url(program_url)
-    workspace = create_workspace(program_url, program_name=program_handle)
-    log(f"Created workspace: {workspace}")
+    workspace = _find_existing_workspace(program_url, program_handle)
+    if workspace is None:
+        workspace = create_workspace(program_url, program_name=program_handle)
+        log(f"Created workspace: {workspace}")
+    else:
+        log(f"Reusing existing workspace: {workspace}")
 
     try:
         with console.status("[cyan]Fetching the supplied public policy page..."):
@@ -303,45 +324,41 @@ def run() -> None:
 
 
 def _start_policy_auto_scan(workspace: Path) -> None:
-    """Start continuous local-source analysis after a policy import."""
-    source_text = Prompt.ask(
-        "[bold cyan]Local source project path for automatic five-brain scanning (Enter to configure later)[/bold cyan]",
-        default="",
-    ).strip()
+    """Start the saved continuous scan automatically; no source-path prompt."""
     bugs_dir = workspace / "bugs"
     bugs_dir.mkdir(parents=True, exist_ok=True)
-    if not source_text:
-        state = {
-            "status": "waiting_for_local_source",
-            "note": "Policy import completed. No source tree was supplied, so source-code brains have not run.",
-            "next_step": "Run: auto-find-bug watch-scan /path/to/local-source " + str(workspace),
-            "target_network_activity": "none",
-        }
-        (bugs_dir / "scan-state.json").write_text(
-            json.dumps(state, indent=2) + "\n", encoding="utf-8"
-        )
-        console.print("[yellow]Policy imported. Automatic scan is waiting for a local source path; no target was contacted.[/yellow]")
-        console.print(f"Later: auto-find-bug watch-scan /path/to/local-source {workspace}")
-        return
+    config_path = bugs_dir / "scan-config.json"
+    config = {}
+    if config_path.is_file():
+        try:
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            config = {}
 
-    source = Path(source_text).expanduser()
-    if not source.exists() or not (source.is_file() or source.is_dir()):
-        console.print(f"[yellow]Source path is invalid. Configure it later with: auto-find-bug watch-scan /path/to/local-source {workspace}[/yellow]")
-        return
-    if source.is_file() and source.suffix.lower() == ".apk":
-        console.print("[yellow]The continuous five-brain watcher requires a source-code file or project directory; use the existing APK analyze command for APK files.[/yellow]")
-        return
-
-    from .continuous_scan import watch_five_brain_scan
+    # First run uses a predictable drop-folder. Later imports reuse the saved path.
+    source_value = os.environ.get("AFB_SOURCE_ROOT") or config.get("source_path")
+    source = Path(source_value).expanduser().resolve() if source_value else (workspace / "source").resolve()
+    source.mkdir(parents=True, exist_ok=True)
+    config = {
+        "source_path": str(source),
+        "poll_seconds": int(config.get("poll_seconds", 5)),
+        "refresh_seconds": int(config.get("refresh_seconds", 900)),
+        "auto_start_on_policy_import": True,
+    }
+    config_path.write_text(json.dumps(config, indent=2) + "\\n", encoding="utf-8")
 
     console.print(Panel(
-        f"Source: {source.resolve()}\nWorkspace: {workspace}\n"
-        "5 brains: parallel\n"
-        "Re-scan: immediately on source changes; periodic advisory refresh every 15 minutes\n"
-        "Stop: Ctrl+C\nTarget network activity: none",
-        title="CONTINUOUS FIVE-BRAIN SCAN STARTING",
+        f"Source folder: {source}\\nWorkspace: {workspace}\\n"
+        "Five brains: parallel\\n"
+        "Re-scan: source changes + advisory refresh every 15 minutes\\n"
+        "Stop: Ctrl+C\\nTarget network activity: none",
+        title="AUTOMATIC CONTINUOUS SCAN",
         border_style="cyan",
     ))
+    console.print("[dim]Place the authorized local source tree in the saved source folder. "
+                  "On the next import of this same program, AFB reuses this workspace and starts the watcher automatically.[/dim]")
+
+    from .continuous_scan import watch_five_brain_scan
 
     def report(result: dict) -> None:
         console.print(
@@ -351,9 +368,16 @@ def _start_policy_auto_scan(workspace: Path) -> None:
         console.print(f"[dim]History: {workspace / 'bugs' / 'scan-history.jsonl'}[/dim]")
 
     try:
-        watch_five_brain_scan(source, workspace, on_scan=report)
+        watch_five_brain_scan(
+            source, workspace,
+            poll_seconds=config["poll_seconds"],
+            refresh_seconds=config["refresh_seconds"],
+            on_scan=report,
+        )
     except KeyboardInterrupt:
-        console.print("\n[yellow]Continuous scan stopped by operator. Last results and scan history are preserved.[/yellow]")
+        console.print("\\n[yellow]Continuous scan paused by operator. Results and history are preserved; re-import this policy to resume.[/yellow]")
+
+
 
 def _research_command(args: argparse.Namespace) -> int:
     try:
